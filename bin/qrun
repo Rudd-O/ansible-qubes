@@ -1,0 +1,45 @@
+#!/usr/bin/env python
+
+import pipes
+import os
+import subprocess
+import sys
+
+argv = list(sys.argv[1:])
+if argv[0].startswith("--proxy="):
+    remotehost = argv[0][8:]
+    argv = argv[1:]
+else:
+    remotehost = None
+host, parms = argv[0], argv[1:]
+
+path_to_this_file = os.path.dirname(__file__)
+path_to_qrun = os.path.join(path_to_this_file, "qrun-bridge")
+path_to_qrun = os.path.abspath(path_to_qrun)
+
+if remotehost:
+    args = " ".join(pipes.quote(x) for x in parms)
+    poop = file(path_to_qrun, "rb").read().encode("hex_codec")
+    therest_template = ("test -x ./.qrun-bridge-stub || "
+                        "python -c 'import os; file(\"./.qrun-bridge-stub\", \"wb\").write(\"%s\".decode(\"hex_codec\")); os.chmod(\"./.qrun-bridge-stub\", 0700)' || "
+                        "exit 127 ;"
+                        "export PASS_LOCAL_STDERR=1 ;"
+                        "/usr/lib/qubes/qrexec-client-vm %s "
+                        "qubes.VMShell ./.qrun-bridge-stub %s")
+    therest = therest_template % (poop, host, args)
+    cmd = [
+        'ssh',
+        '-o', 'BatchMode yes',
+        remotehost,
+        therest,
+    ]
+else:
+    os.environ["PASS_LOCAL_STDERR"] = "1"
+    cmd = [
+        '/usr/lib/qubes/qrexec-client-vm',
+        host,
+        'qubes.VMShell',
+        path_to_qrun,
+    ] + parms
+
+os.execvp(cmd[0], cmd)
