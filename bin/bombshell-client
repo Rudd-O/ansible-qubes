@@ -259,6 +259,7 @@ def main_master():
       stdin=subprocess.PIPE,
       stdout=subprocess.PIPE,
       close_fds=True,
+      preexec_fn=os.setpgrp,
     )
   except OSError, e:
     logging.error("cannot launch qrexec-client-vm: %s", e)
