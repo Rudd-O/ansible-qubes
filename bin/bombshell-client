@@ -91,16 +91,30 @@ def recv_confirmation(chan):
   return r, errmsg
 
 
-class SignalSender(object):
-
-  def __init__(self, sigqueue):
-    """Handles signals by queueing them into a file-like object."""
+class SignalSender(threading.Thread):
+  def __init__(self, signals, sigqueue):
+    """Handles signals by pushing them into a file-like object."""
+    threading.Thread.__init__(self)
+    self.setDaemon(True)
+    self.queue = Queue.Queue()
     self.sigqueue = sigqueue
+    for sig in signals:
+      signal.signal(sig, self.copy)
 
   def copy(self, signum, frame):
-    assert signum > 0
-    self.sigqueue.write(struct.pack("!H", signum))
-    self.sigqueue.flush()
+    self.queue.put(signum)
+    logging.debug("Signal %s pushed to queue", signum)
+
+  def run(self):
+    while True:
+      signum = self.queue.get()
+      logging.debug("Dequeued signal %s", signum)
+      if signum is None:
+        break
+      assert signum > 0
+      self.sigqueue.write(struct.pack("!H", signum))
+      self.sigqueue.flush()
+      logging.debug("Wrote signal %s to remote end", signum)
 
 
 class Signaler(threading.Thread):
@@ -216,23 +230,6 @@ class DataDemultiplexer(threading.Thread):
     logging.debug("End of data demultiplexer")
 
 
-def setup_signal_handler(sigqueue):
-    """Sets process up for signal handling.
-    
-    Only to be invoked from the master main."""
-    for sig in (
-        signal.SIGINT,
-        signal.SIGALRM,
-        signal.SIGTERM,
-        signal.SIGUSR1,
-        signal.SIGUSR2,
-        signal.SIGTSTP,
-        signal.SIGCONT,
-        ):
-        copier = SignalSender(sigqueue)
-        signal.signal(sig, copier.copy)
-
-
 def main_master():
   global debug_enabled
   args = sys.argv[1:]
@@ -274,8 +271,19 @@ def main_master():
     logging.error("remote: %s", errmsg)
     return confirmation
 
+  handled_signals = (
+      signal.SIGINT,
+      signal.SIGABRT,
+      signal.SIGALRM,
+      signal.SIGTERM,
+      signal.SIGUSR1,
+      signal.SIGUSR2,
+      signal.SIGTSTP,
+      signal.SIGCONT,
+  )
   read_signals, write_signals = pairofpipes()
-  setup_signal_handler(write_signals)
+  signaler = SignalSender(handled_signals, write_signals)
+  signaler.start()
 
   muxer = DataMultiplexer([sys.stdin, read_signals], p.stdin)
   muxer.start()
