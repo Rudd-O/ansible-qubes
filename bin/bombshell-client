@@ -16,6 +16,8 @@ import threading
 debug_lock = threading.Lock()
 debug_enabled = False
 class LoggingEmu():
+    def __init__(self, prefix):
+        self.prefix = prefix
     def debug(self, *a, **kw):
         if not debug_enabled:
             return
@@ -31,10 +33,10 @@ class LoggingEmu():
                 string = a[0]
             else:
                 string = a[0] % a[1:]
-            print >> sys.stderr, string
+            print >> sys.stderr, self.prefix, string
         finally:
             debug_lock.release()
-logging = LoggingEmu()
+logging = LoggingEmu("master:" if "__file__" in globals() else "remote:")
 
 
 def send_command(chan, cmd):
@@ -72,6 +74,7 @@ def send_confirmation(chan, retval, errmsg):
 
 
 def recv_confirmation(chan):
+  logging.debug("Waiting for confirmation")
   r = chan.read(2)
   if len(r) == 0:
       # This happens when the remote domain does not exist.
