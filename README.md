@@ -1,9 +1,16 @@
 Ansible connection plugin for Qubes
 ===================================
 
-This is an experimental plug-in mechanism that enables Ansible to connect
-to Qubes VMs, either from another Qubes VM, or from a remote host via SSH
-(assuming there exists a proxy Qubes VM with SSH listening on it).
+This is a connection plug-in for Ansible and set of commands for SaltStack
+`salt-ssh` that enables you to use Ansible and SaltStack to manage your
+Qubes OS VMs:
+
+* from the `dom0`,
+* from any VM within your Qubes OS machine, or even
+* from a machine that has SSH access to your Qubes OS machine
+  (assuming there exists a proxy Qubes OS VM with SSH listening on the
+  target Qubes OS machine, and said VM is permitted to run `qubes.VMShell`
+  in other VMs of that system).
 
 **Warning: this is a massive hack.**  Please be *absolutely sure* you
 have reviewed this code before using it.  Contributions welcome.
@@ -13,14 +20,15 @@ How to use this
 
 You integrate it into your Ansible setup by:
 
-1. placing the `qubes.py` connection plugin in your Ansible
-`connection_plugins` directory, then
-2. placing the `bombshell-client` executable in one of two locations:
+1. setting up a `connections_plugin = <directory>` in your `ansible.cfg`
+   file, pointing it to a directory you control, then
+2. placing the `qubes.py` connection plugin in your Ansible
+   `connection_plugins` directory as defined above, then
+3. placing the `qrun` and `bombshell-client` executables in one of two
+   locations:
 
   * Anywhere on your Ansible machine's `PATH`.
   * In a `../../bin` directory relative to the `qubes.py` file.
-
-3. placing the `qrun` executable in the same location as `bombshell-client`.
 
 After having done that, you can add Qubes VMs to your Ansible `hosts` file:
 
@@ -30,14 +38,22 @@ vmonremotehost  ansible_connection=qubes management_proxy=1.2.3.4
 ```
 
 You are now free to run `ansible-playbook` or `ansible` against those hosts.
+So long as those programs can find your `ansible.cfg` file, and your `hosts`
+file, it will work.  Note that Qubes OS will bother you every time you run
+commands with the prompt to allow `qubes.VMShell` on the target VM you're
+managing, unless you set said permission to default to yes.
 
-Additionally, you can use the `qssh` and `qscp` commands, which will
-transparently attempt to SSH into a host unless it is unresolvable,
-in which case it will fall back to using the `bombshell-client` to
-communicate with a local VM.  Simply place these commands within the
-same `bin` directory mentioned above, and they will just work.  If you
-symlink `ssh` and `scp` to those commands respectively, SaltStack's
-SSH-based automation will work transparently as well.
+You can also integrate this plugin with SaltStack's `salt-ssh` program, by:
+
+1. placing the `bombshell-client`, `qrun`, `qssh` and `qscp` commands
+   in some directory of your path, then
+2. symlinking `ssh` to `qssh` and `scp` to `qscp`.
+
+These commands will transparently attempt to SSH into a host unless it is
+unresolvable, in which case they will assume it's a VM and fall back to
+using the `bombshell-client` to communicate with said presumed VM.
+SaltStack's SSH-based `salt-ssh` automator will pick these fake SSH and
+SCP clients, and they will work transparently.
 
 Bombshell remote shell technology
 ---------------------------------
