@@ -42,6 +42,5 @@ if remotehost:
         remotehost,
         therest,
     ]
-else:
 
 os.execvp(cmd[0], cmd)
