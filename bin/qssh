@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+import socket
+
+parms = sys.argv[1:]
+
+try:
+  socket.inet_aton(parms[0])
+  os.execv("/usr/bin/ssh", ["/usr/bin/ssh"] + parms)
+except socket.error:
+  pass
+
+path_to_bombshell = os.path.abspath(os.path.join(os.path.dirname(__file__), "bombshell-client"))
+
+host = None
+rest = parms
+while True:
+  if not rest:
+    break
+  if rest[0] == "--":
+    if host is None:
+      _, host, rest = rest[0], rest[1], rest[2:]
+    else:
+      _, rest = rest[0], rest[1:]
+    break
+  elif rest[0].startswith("-o") and len(rest[0]) > 2:
+    _, rest = rest[0], rest[1:]
+  elif rest[0].startswith("-o"):
+    _, rest = rest[0:1], rest[2:]
+  elif rest[0].startswith("-"):
+    _, rest = rest[0], rest[1:]
+  else:
+    if host is None:
+      host, rest = rest[0], rest[1:]
+    else:
+      break
+
+cmd = [
+        path_to_bombshell,
+        host,
+    ] + rest
+
+os.execvp(cmd[0], cmd)

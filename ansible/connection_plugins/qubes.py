@@ -54,25 +54,32 @@ class Connection(object):
 
     def produce_command(self, cmd, executable='/bin/sh'):
         proxy = ["--proxy=%s" % self.proxy] if self.proxy else []
-        chroot = "%s" % self.chroot if self.chroot else self.host
-        if executable:
-            local_cmd = [self.chroot_cmd] + proxy + [chroot, cmd]
-            vvv("EXEC (with executable %s) %s" % (executable, local_cmd), host=self.chroot)
+        chroot = self.chroot if self.chroot else self.host
+        if isinstance(cmd, basestring):
+          cmd = ["bash", "-c", cmd]
+        if proxy:
+          local_cmd = [self.chroot_cmd] + proxy + [chroot] + cmd
         else:
-            if proxy:
-              local_cmd = '%s %s "%s" %s' % (self.chroot_cmd, proxy, chroot, cmd)
-            else:
-              local_cmd = '%s "%s" %s' % (self.chroot_cmd, chroot, cmd)
-            vvv("EXEC (without executable) %s" % (local_cmd), host=self.chroot)
+          local_cmd = [self.chroot_cmd] + [chroot] + cmd
+        if executable:
+          local_cmd = [executable, "-c", " ".join(pipes.quote(x) for x in local_cmd)]
+          vvv("EXEC (with %s) %s" % (executable, local_cmd), host=self.chroot)
+        else:
+          vvv("EXEC (without executable) %s" % (local_cmd), host=self.chroot)
         return local_cmd
 
     def exec_command(self, cmd, tmp_path, become_user=None, sudoable=False, executable='/bin/sh', in_data=None):
         ''' run a command on the chroot '''
 
-        # We enter qrun as root so sudo stuff can be ignored
+        if become_user is not None and sudoable:
+          if isinstance(cmd, basestring):
+            cmd = "sudo -H -u %s bash -c %s" % (pipes.quote(become_user), pipes.quote(cmd))
+          else:
+            assert 0, "is not basestring: %r" % cmd
+
         local_cmd = self.produce_command(cmd, executable)
 
-        p = subprocess.Popen(local_cmd, shell=isinstance(local_cmd, basestring),
+        p = subprocess.Popen(local_cmd, shell=False,
                              cwd=self.runner.basedir,
                              stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)

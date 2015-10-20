@@ -15,10 +15,12 @@ You integrate it into your Ansible setup by:
 
 1. placing the `qubes.py` connection plugin in your Ansible
 `connection_plugins` directory, then
-2. placing the `qrun` and `qrun-bridge` executables in one of two locations:
+2. placing the `bombshell-client` executable in one of two locations:
 
   * Anywhere on your Ansible machine's `PATH`.
   * In a `../../bin` directory relative to the `qubes.py` file.
+
+3. placing the `qrun` executable in the same location as `bombshell-client`.
 
 After having done that, you can add Qubes VMs to your Ansible `hosts` file:
 
@@ -27,12 +29,22 @@ workvm          ansible_connection=qubes
 vmonremotehost  ansible_connection=qubes management_proxy=1.2.3.4
 ```
 
-Experimental bombshell replacement for qrun-bridge and friends
---------------------------------------------------------------
+You are now free to run `ansible-playbook` or `ansible` against those hosts.
 
-There is a *much faster* way to run commands in other VMs that employs the `bombshell-client` script on this repository.  Said script is still not part of the Ansible Qubes automation system, but it's the future of Ansible Qubes automation.  Despite the fact that the script is not yet wired into the Ansible automation system for Qubes, it can be used right now to execute commands against other VMs in a much faster way than through the legacy `qrun` script.
+Additionally, you can use the `qssh` and `qscp` commands, which will
+transparently attempt to SSH into a host unless it is unresolvable,
+in which case it will fall back to using the `bombshell-client` to
+communicate with a local VM.  Simply place these commands within the
+same `bin` directory mentioned above, and they will just work.  If you
+symlink `ssh` and `scp` to those commands respectively, SaltStack's
+SSH-based automation will work transparently as well.
 
-Usage instructions:
+Bombshell remote shell technology
+---------------------------------
+
+Bombshell is a way to run commands in other VMs, that employs the `bombshell-client` script on this repository.  Said method is now integrated in these programs and will only work with Qubes OS 3.
+
+Direct (non-Ansible and non-SaltStack) usage instructions:
 
     ./bombshell-client <vmname> command-to-run [arguments...]
 
@@ -42,11 +54,7 @@ The command above spawns a `command-to-run` on `vmname`, interactively.  Standar
 
 Spawns the `command-to-run` on the `vmname`, interactively, printing communication channel interaction behavior into the standard error of the invoker, and into the root journal of the `vmname`.
 
-I'm pledging bounties for the following bugs:
-
-* US$65 per bug fix that solves problems with the script handling extraneous error conditions (you must explain how the condition arises, and how your fix prevents it).
-* US$230 per bug fix that fixes data losses (you must explain what the data loss is, and demonstrate how your fix fixes it).
-* US$830 per bug fix that fixes security issues (you must demo the security flaw after explaining what the insecurity scenario is and justifying the scenario).  This one is capped at two fixes.
+The bounties that were published have been collected.  Sorry!   Open source works!
 
 Enjoy!
 

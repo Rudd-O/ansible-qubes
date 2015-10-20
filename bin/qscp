@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import subprocess
+import socket
+
+parms = sys.argv[1:]
+
+try:
+  parmwithcolons = [x for x in parms if ":" in x][-1]
+  ipaddr = parmwithcolons.split(":",1)[0]
+  socket.inet_aton(ipaddr)
+  os.execv("/usr/bin/scp", ["/usr/bin/scp"] + parms)
+except socket.error:
+  pass
+
+path_to_this_file = os.path.dirname(__file__)
+path_to_ssh = os.path.join(path_to_this_file, "qssh")
+path_to_ssh = os.path.abspath(path_to_ssh)
+
+scmd = ["/usr/bin/scp"] + ["-S", path_to_ssh] + parms
+
+os.execvp(scmd[0], scmd)
