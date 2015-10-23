@@ -41,6 +41,6 @@ while True:
 cmd = [
         path_to_bombshell,
         host,
-    ] + rest
+    ] + ["sh", "-c", " ".join(rest)]
 
 os.execvp(cmd[0], cmd)
