@@ -107,15 +107,18 @@ file to edit is in the `dom0` of the target Qubes OS machine, path
 
 You can also integrate this plugin with SaltStack's `salt-ssh` program, by:
 
-1. placing the `bombshell-client`, `qrun`, `qssh` and `qscp` commands
+1. placing the `bombshell-client`, `qrun` and `qssh` commands
    in some directory of your path, then
-2. symlinking `ssh` to `qssh` and `scp` to `qscp`.
+2. symlinking `ssh` to `qssh` and `scp` to `qssh` again, then
+3. adding the `host:` attribute to the roster entry of each one of your
+   VMs as follows: `<VM name>.__qubes__`.
 
-These commands will transparently attempt to SSH into a host unless it is
-unresolvable, in which case they will assume it's a VM and fall back to
-using the `bombshell-client` to communicate with said presumed VM.
-SaltStack's SSH-based `salt-ssh` automator will pick these fake SSH and
-SCP clients, and they will work transparently.
+These fake `ssh` and `scp` commands will transparently attempt to SSH
+into a host unless the host name ends with `.__qubes__`, in which case
+they will assume it's a VM and fall back to using the `bombshell-client`
+to communicate with said presumed VM.  SaltStack's SSH-based `salt-ssh`
+automator will pick these fake SSH and SCP clients based on the path,
+and they will work transparently.
 
 Bug bounties
 ------------
