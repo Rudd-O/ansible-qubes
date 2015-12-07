@@ -38,11 +38,14 @@ def is_qubes_host(host):
   return host.endswith(".__qubes__")
 
 
-def get_vmname_and_management_proxy(host):
+def get_vmname_and_management_proxy(hostname):
+  host = hostname
   host = host[:-len(".__qubes__")]
   if host.endswith("__"):
     host, proxy, _ = host.rsplit("__", 2)
-    return host, proxy
+    if not host.endswith("."):
+        raise ValueError("invalid proxied host %r" % hostname)
+    return host[:-1], proxy
   return host, None
 
 
