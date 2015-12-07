@@ -52,6 +52,7 @@ def get_vmname_and_management_proxy(hostname):
 parms = sys.argv[1:]
 host, rest = find_hostname_and_command(parms)
 
+# SCP execution path.
 if os.path.basename(sys.argv[0]) in ("scp", "qscp"):
   if not is_qubes_host(host):
     os.execv("/usr/bin/scp", ["/usr/bin/scp"] + parms)
@@ -60,17 +61,17 @@ if os.path.basename(sys.argv[0]) in ("scp", "qscp"):
   scmd = ["/usr/bin/scp"] + ["-S", path_to_ssh] + parms
   os.execvp(scmd[0], scmd)
 
-else:
-  if not is_qubes_host(host):
-    os.execv("/usr/bin/ssh", ["/usr/bin/ssh"] + parms)
+# SSH execution path.
+if not is_qubes_host(host):
+  os.execv("/usr/bin/ssh", ["/usr/bin/ssh"] + parms)
 
-  path_to_bombshell = os.path.abspath(os.path.join(os.path.dirname(__file__), "bombshell-client"))
-  vmname, proxy = get_vmname_and_management_proxy(host)
-  if proxy:
-    assert 0, "While connecting to %s (VM name %s): management proxy not supported yet" % (host, vmname)
+path_to_bombshell = os.path.abspath(os.path.join(os.path.dirname(__file__), "bombshell-client"))
+vmname, proxy = get_vmname_and_management_proxy(host)
+if proxy:
+  assert 0, "While connecting to %s (VM name %s): management proxy not supported yet" % (host, vmname)
 
-  cmd = [
-        path_to_bombshell,
-        vmname,
-    ] + ["sh", "-c", " ".join(rest)]
-  os.execvp(cmd[0], cmd)
+cmd = [
+      path_to_bombshell,
+      vmname,
+  ] + ["sh", "-c", " ".join(rest)]
+os.execvp(cmd[0], cmd)
