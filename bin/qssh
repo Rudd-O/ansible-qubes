@@ -7,6 +7,24 @@ import socket
 import urllib
 
 
+def is_scp():
+    return os.path.basename(sys.argv[0]) in ("scp", "qscp")
+
+
+def find_scp_hostname(parms):
+  host = None
+  while host is None:
+      if parms[-1].startswith("-"):
+          parms = parms[:-1]
+          continue
+      if any(parms[-2].startswith(x)
+             for x in ["-c", "-F", "-i", "-l", "-o", "-P", "-S"]):
+          parms = parms[:-2]
+      host = parms[-1]
+  host, _ = host.split(":", 1)
+  return host
+
+
 def find_hostname_and_command(parms):
   host = None
   rest = parms
@@ -50,16 +68,20 @@ def get_vmname_and_management_proxy(hostname):
 
 
 parms = sys.argv[1:]
-host, rest = find_hostname_and_command(parms)
 
 # SCP execution path.
-if os.path.basename(sys.argv[0]) in ("scp", "qscp"):
+if is_scp():
+  host = find_scp_hostname(parms)
+
   if not is_qubes_host(host):
     os.execv("/usr/bin/scp", ["/usr/bin/scp"] + parms)
 
+  path_to_this_file = os.path.dirname(__file__)
   path_to_ssh = os.path.join(path_to_this_file, "qssh")
   scmd = ["/usr/bin/scp"] + ["-S", path_to_ssh] + parms
   os.execvp(scmd[0], scmd)
+
+host, rest = find_hostname_and_command(parms)
 
 # SSH execution path.
 if not is_qubes_host(host):
