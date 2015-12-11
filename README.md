@@ -120,6 +120,14 @@ to communicate with said presumed VM.  SaltStack's SSH-based `salt-ssh`
 automator will pick these fake SSH and SCP clients based on the path,
 and they will work transparently.
 
+If the program `qssh` or `qscp` get a first and second parameters
+`--vmname <VM>`, then it is assumed that the host name passed to
+the command is irrelevant, and that you want to connect to the VM
+specified by `<VM>`.  If, in addition to that, you specify third
+and fourth parameters `--management-proxy <M>`, then it is assumed
+that you want to connect to the VM through the IP address of the
+management proxy `<M>`.
+
 Bug bounties
 ------------
 

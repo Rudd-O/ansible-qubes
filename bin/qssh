@@ -12,6 +12,15 @@ def is_scp():
 
 
 def find_scp_hostname(parms):
+  overridden_host = None
+  if len(parms) > 1 and parms[0] == "--vmname":
+      overridden_host = parms[1]
+      parms = parms[2:]
+      if len(parms) > 1 and parms[0] == "--management-proxy":
+          proxy = parms[1]
+          parms = parms[2:]
+          overridden_host = overridden_host + ".__%s__" % proxy
+      overridden_host = overridden_host + ".__qubes__"
   host = None
   while host is None:
       if parms[-1].startswith("-"):
@@ -22,11 +31,22 @@ def find_scp_hostname(parms):
           parms = parms[:-2]
       host = parms[-1]
   host, _ = host.split(":", 1)
-  return host
+  if overridden_host:
+      parms[-1] = overridden_host + parms[-1][len(host):]
+  return overridden_host if overridden_host else host, parms
 
 
 def find_hostname_and_command(parms):
   host = None
+  overridden_host = None
+  if len(parms) > 1 and parms[0] == "--vmname":
+      overridden_host = parms[1]
+      parms = parms[2:]
+      if len(parms) > 1 and parms[0] == "--management-proxy":
+          proxy = parms[1]
+          parms = parms[2:]
+          overridden_host = overridden_host + ".__%s__" % proxy
+      overridden_host = overridden_host + ".__qubes__"
   rest = parms
   while True:
     if not rest:
@@ -49,7 +69,7 @@ def find_hostname_and_command(parms):
       else:
         break
   host, port = urllib.splitport(host)
-  return host, rest
+  return overridden_host if overridden_host else host, rest
 
 
 def is_qubes_host(host):
@@ -71,14 +91,14 @@ parms = sys.argv[1:]
 
 # SCP execution path.
 if is_scp():
-  host = find_scp_hostname(parms)
+  host, rest = find_scp_hostname(parms)
 
   if not is_qubes_host(host):
     os.execv("/usr/bin/scp", ["/usr/bin/scp"] + parms)
 
   path_to_this_file = os.path.dirname(__file__)
   path_to_ssh = os.path.join(path_to_this_file, "qssh")
-  scmd = ["/usr/bin/scp"] + ["-S", path_to_ssh] + parms
+  scmd = ["/usr/bin/scp"] + ["-S", path_to_ssh] + rest
   os.execvp(scmd[0], scmd)
 
 host, rest = find_hostname_and_command(parms)
