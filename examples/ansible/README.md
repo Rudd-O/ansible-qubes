@@ -18,7 +18,7 @@ Now, let's do a quick walkthrough of these files.
 Ansible configuration
 ---------------------
 
-The starting point is the file `ansible.cfg`.  This file tells Ansible where
+The starting point is the file [`ansible.cfg`].  This file tells Ansible where
 to find the requisite components to make the Qubes automation work.  As
 you can see, it's composed mostly of paths, and it points you to the `hosts`
 file.
