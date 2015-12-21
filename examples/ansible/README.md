@@ -2,18 +2,31 @@ Qubes OS DevOps automation toolkit: Ansible example
 ==================================================
 
 This is an example of Ansible automation that leverages this toolkit to
-let you manage Qubes VMs.  These instructions assume that you have already:
+let you manage Qubes VMs.  With it, you'll be managing dozens of VMs
+(as well as any SSH-based remote host) in a fraction of the time it would
+take to do so by hand or with shell scripts.
 
-1. cloned this entire project into directory `/home/user/ansible-qubes`
-2. installed Ansible (`yum install ansible`) in the TemplateVM of that AppVM
-3. opened a terminal window and changed to the directory containing this file
+Hitting the ground running
+--------------------------
 
-They also assume a bit of familiarity with Ansible as well.  If you would like
-to get an introduction on Ansible concepts, this examples directory is ripe
-for a compare-and-contrast exercise with the
-[Ansible introduction](https://docs.ansible.com/ansible/intro_getting_started.html).
+Get yourself ready to test this example:
 
-Now, let's do a quick walkthrough of these files.
+1. Create or designate an AppVM where you'll run this example.  We'll assume
+   it will be called `manager` in this text.
+2. Install the `git` and the `ansible` programs on the TemplateVM of that
+   designated `manager` VM.
+3. Power off both the `manager` and its Template VM.
+4. Start the `manager` VM.
+5. Open a terminal window on it.
+6. `git clone` or untar this project into `/home/user/ansible-qubes`.
+
+You're ready to continue with this tutorial.  If you would like to get an
+introduction on Ansible concepts parallel to reading this document, a
+compare-and-contrast exercise with the
+[Ansible introduction](https://docs.ansible.com/ansible/intro_getting_started.html)
+would probably work very well.
+
+Now, let's dive into this example Ansible setup.
 
 Ansible configuration
 ---------------------
@@ -99,7 +112,7 @@ If you're running a bit ahead of these instructions, you may have noticed
 that running `ansible dom0 -m shell whoami` actually results in an error.
 
 This is by design from the Qubes team -- the `qubes.VMShell` service does
-not ship in the `dom0` VM at all.  If you'd lik to be able to manage `dom0`
+not ship in the `dom0` VM at all.  If you'd like to be able to manage `dom0`
 from your configuration management system, all you need to do is deploy
 the necessary configuration to `dom0`.
 
