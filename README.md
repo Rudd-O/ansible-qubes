@@ -9,14 +9,14 @@ industry-standard configuration management solutions.
 
 The software in this kit includes the following:
 
-1. A computer program `bombshell-client` that can run in dom0 or
+1. A [computer program `bombshell-client`](./bin/bombshell-client) that can run in dom0 or
    in any domU, which uses the `qubes.VMShell` Qubes RPC service
    to provide an *interactive* session with a shell interpreter
    (or any program of your choice) from a VM to any other VM.
-2. A connection plug-in for Ansible that uses `bombshell-client`
-   to make the full power of Ansible automation available to
-   Qubes OS administrators and users.
-3. A set of commands for SaltStack `salt-ssh` that fake SSH
+2. A [connection plug-in for Ansible](./ansible/connection_plugins/qubes.py)
+   that uses `bombshell-client` to make the full power of Ansible automation
+   available to Qubes OS administrators and users.
+3. A [set of commands for SaltStack `salt-ssh`](./bin/) that fake SSH
    and SCP using `bombshell-client` to enable SaltStack management
    of Qubes OS VMs.
 
