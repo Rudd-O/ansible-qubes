@@ -14,7 +14,8 @@ Get yourself ready to test this example:
 1. Create or designate an AppVM where you'll run this example.  We'll assume
    it will be called `manager` in this text.
 2. Install the `git` and the `ansible` programs on the TemplateVM of that
-   designated `manager` VM.
+   designated `manager` VM.  In the latest Qubes OS release,
+   `sudo dnf install git ansible` from a terminal window would do the trick.
 3. Power off both the `manager` and its Template VM.
 4. Start the `manager` VM.
 5. Open a terminal window on it.
@@ -166,7 +167,7 @@ For a quick primer on how to run playbooks, here are the essentials:
     ansible-playbook -v <playbook YML file> [-l <only these hosts>]
 
 This would tell `ansible-playbook` to run every step of the playbook file
-in order, on all the hosts it targets on each `hosts` stanza.  Should you
+in order, on all the hosts the playbook targets.  Should you
 want to limit your run to a subset of the hosts, you can use the `-l` argument
 and pass those hosts, which are in the exact same format as the one
 taken by the `ansible` command on its hosts specification list.
