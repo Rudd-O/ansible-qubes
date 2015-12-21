@@ -1,0 +1,5 @@
+---
+- hosts: all:!nonqubes
+  gather_facts: False
+  tasks:
+  - include: tasks/dumpenv.yml

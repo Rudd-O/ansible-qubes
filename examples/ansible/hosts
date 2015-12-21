@@ -1,0 +1,29 @@
+# Here is where you define your VMs.
+fedora-23    ansible_connection=qubes
+netvm        ansible_connection=qubes
+firewallvm   ansible_connection=qubes
+work         ansible_connection=qubes
+
+# Playbooks involving dom0 will fail unless you set up shell access for it.
+# See the README.md file for instructions on how to do that.
+dom0         ansible_connection=qubes
+
+# Provided the VM where you are running Ansible has network connectivity,
+# you could mix SSH hosts in here just as well.
+pluto        ansible_host=example.com ansible_user=root
+
+[appvms]
+work
+
+[servicevms]
+netvm
+firewallvm
+
+[templatevms]
+fedora-23
+
+[dom0s]
+dom0
+
+[nonqubes]
+pluto

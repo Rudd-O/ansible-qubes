@@ -1,0 +1,8 @@
+---
+
+- name: Remove previous directory
+  local_action: file dest=/tmp/dump state=absent
+- name: Create directory
+  local_action: shell mkdir -p /tmp/dump || true
+- name: Dump all vars
+  local_action: template src=files/dumpenv/dumpenv.j2 dest=/tmp/dump/{{ inventory_hostname }}

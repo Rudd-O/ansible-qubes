@@ -1,8 +1,13 @@
 Qubes OS DevOps automation toolkit
 ==================================
 
-This is a kit of several tools to help you automate your Qubes OS
-operations:
+This software helps you automate development operations on Qubes OS through
+industry-standard configuration management solutions.
+
+**Do you learn better by example?**  Then jump to the directory
+[examples/ansible/](examples/ansible/) to  get started right away.
+
+The software in this kit includes the following:
 
 1. A computer program `bombshell-client` that can run in dom0 or
    in any domU, which uses the `qubes.VMShell` Qubes RPC service
@@ -70,6 +75,15 @@ should give you the host name of the VM `vmname`.
 The rsync manpage documents the use of a special form of rsh to connect
 to remote hosts -- this option can be used with `bombshell-client`
 to run rsync against other VMs as if they were normal SSH hosts.
+
+Enabling bombshell-client access to dom0
+----------------------------------------
+
+`dom0` needs its `qubes.VMShell` service activated.  As `root` in `dom0`,
+create a file `/etc/qubes-rpc/qubes.VMshell` with mode `0644` and make
+sure its contents say `/bin/bash`.
+
+That's it -- `bombshell-client` should work against dom0 now.
 
 How to use this with automation tools like Ansible and SaltStack
 ----------------------------------------------------------------

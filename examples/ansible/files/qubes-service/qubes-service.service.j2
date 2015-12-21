@@ -1,0 +1,11 @@
+[Unit]
+Description={{ description }}
+ConditionPathExists=/var/run/qubes-service/qubes-{{ name }}
+After=qubes-gui-agent.service
+
+[Service]
+ExecStart=/bin/echo Hello world
+StandardOutput=syslog
+
+[Install]
+WantedBy=multi-user.target

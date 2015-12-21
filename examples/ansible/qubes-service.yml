@@ -1,0 +1,13 @@
+- hosts: templatevms
+  sudo: True
+  vars:
+    description: Qubes hello world
+    name: helloworld
+  tasks:
+  - name: deploy service file
+    template:
+      src: files/qubes-service/qubes-service.service.j2
+      dest: /etc/systemd/system/qubes-{{ name }}.service
+    register: unitfile
+  - name: enable service file
+    service: name=qubes-{{ name }}.service enabled=true

@@ -1,0 +1,6 @@
+---
+- hosts: all:!nonqubes
+  tasks:
+  - name: cat the contents of file /etc/passwd
+    shell: head /etc/passwd
+  - include: tasks/dumpenv.yml
