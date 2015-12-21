@@ -103,8 +103,8 @@ not ship in the `dom0` VM at all.  If you'd lik to be able to manage `dom0`
 from your configuration management system, all you need to do is deploy
 the necessary configuration to `dom0`.
 
-See the heading *Enabling bombshell-client access to dom0* in the top-level
-`README.md` file of this toolkit for instructions on how to do that.
+See the heading *Enabling bombshell-client access to dom0* in the [top-level
+`README.md`](../../README.md) file of this toolkit for instructions on how to do that.
 
 Running modules as root
 -----------------------
