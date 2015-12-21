@@ -19,7 +19,7 @@ Get yourself ready to test this example:
 3. Power off both the `manager` and its Template VM.
 4. Start the `manager` VM.
 5. Open a terminal window on it.
-6. `git clone` or untar this project into `/home/user/ansible-qubes`.
+6. `git clone` this project into `/home/user/ansible-qubes`.
 
 You're ready to continue with this tutorial.  If you would like to get an
 introduction on Ansible concepts parallel to reading this document, a
