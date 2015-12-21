@@ -20,18 +20,18 @@ Ansible configuration
 
 The starting point is the file [`ansible.cfg`](./ansible.cfg).  This file tells Ansible where
 to find the requisite components to make the Qubes automation work.  As
-you can see, it's composed mostly of paths, and it points you to the `hosts`
-file.
+you can see, it's composed mostly of paths, and it points you to the
+[`hosts`](./hosts) file.
 
-Importantly, because Ansible will look for the `ansible.cfg` file
+Importantly, because Ansible will look for the [`ansible.cfg`](./ansible.cfg) file
 on your current directory first, that means you will be running your
-Ansible commands on the directory containing `ansible.cfg`.  Later, you can
+Ansible commands on the directory containing [`ansible.cfg`](./ansible.cfg).  Later, you can
 deploy aliases, symlinks or helpers to help you work around that.
 
 Inventory
 ---------
 
-The `hosts` file is your machine inventory -- the VMs (and also physical
+The [`hosts`](./hosts) file is your machine inventory -- the VMs (and also physical
 machines) that you own, and how they group together.  The included inventory
 is almost certainly guaranteed not to match the machines you have, nor how
 you've grouped them conceptually, so feel free to edit it how you see fit.  To
@@ -52,8 +52,9 @@ How Ansible knows to connect to your Qubes VMs
 ----------------------------------------------
 
 Importantly, nothing about this is magic.  `qubes` in the `ansible_connection`
-parameter merely tells Ansible to use the `ansible/connection_plugins/qubes.py`
-as pointed to by the `ansible.cfg` file.  That file automatically enlists
+parameter merely tells Ansible to use the
+[Qubes connection plugin](../../ansible/connection_plugins/qubes.py)
+as pointed to by the [`ansible.cfg`](./ansible.cfg) file.  That file automatically enlists
 the `bombshell-client` technology to connect you to your VMs via Ansible.
 
 When `bombshell-client` starts, it attempts to connect to the target VM's
