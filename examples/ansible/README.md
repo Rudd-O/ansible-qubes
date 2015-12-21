@@ -160,17 +160,17 @@ taken by the `ansible` command on its hosts specification list.
 
 We ship several different sample playbooks:
 
-* `test-nofacts.yml`: logs into the specified machines and retrieves
-   variables, but without the fact gathering process, leaving the collected
-   environment in a `/tmp/` directory.
-* `test-facts.yml`: does the same thing, but collects facts about the targeted
-   hosts before dumping the variables.
-* `editors.yml`: deploys some text editors on your template VMs (assumed
-   to be Fedora).
-* `qubes-service.yml`: deploys a Qubes service to your template VM, which
-   can later be turned on via the Services tab of the properties window of
-   VMs based on the template.  In the example, the service is named
-   `qubes-helloworld`, so that would be the name of the service to
-   add and enable on the Services tab. 
+* [`test-nofacts.yml`](./test-nofacts.yml): logs into the specified machines
+   and retrieves variables, but without the fact gathering process, leaving
+   the collected environment in a `/tmp/` directory.
+* [`test-facts.yml`](./test-facts.yml): does the same thing, but collects
+   facts about the targeted hosts before dumping the variables.
+* [`editors.yml`](./editors.yml): deploys some text editors on your
+   template VMs (assumed to be Fedora).
+* [`qubes-service.yml`](./qubes-service.yml): deploys a Qubes service to
+   your template VM, which can later be turned on via the Services tab
+   of the properties window of VMs based on the template.  In the example,
+   the service is named `qubes-helloworld`, so that would be the name
+   of the service toadd and enable on the Services tab. 
 
 More will come as time goes by.  For now, that's all.  Happy hacking!
