@@ -23,29 +23,28 @@ The software in this kit includes the following:
    running without having to construct everything yourself.
 
 `bombshell-client` and the other programs in this toolkit that
-depend on it, can be used to remotely manipulate Qubes OS VMs:
+depend on it, can be used to run operations from one VM to another,
+in the following combinations:
 
-* from the `dom0` within your Qubes OS machine
-* from any `domU` within your Qubes OS machine
-* to the `dom0` (you must install the `qubes.VMShell` RPC handler
-  on `dom0` first) within your Qubes OS machine
-* to any `domU` within your Qubes OS machine (no work needed)
-* to any `dom0` or `domU` in a remote Qubes OS machine, provided:
-  * that Qubes OS instance has at least one `domU` VM running SSH,
-  * the SSH server is accessible via the network from the client
-    machine running `bombshell-client` (firewall rules, etc.)
-  * the SSH server lets the client log in passwordlessly (pubkey auth)
-  * you have set up the `dom0` `/etc/qubes-rpc/policy/qubes.VMShell`
-    such that RPC invocations from the `domU` running the SSH server
-    are allowed to other VMs.
+* Qubes VM  -> Qubes VM
+* Qubes VM -> Qubes `dom0` (see below for enablement instructions)
+* Qubes `dom0` -> Qubes VM
+* Qubes VM -> network (SSH) -> Qubes VM in another machine (see below for
+   enablement instructions)
+* normal desktop Linux -> network (SSH) -> Qubes VM in another machine
 
-What this means:
+What this means for you is quite simple.  With this toolkit, you can completely
+script the setup and maintenance of an entire network of Qubes OS machines.
 
-With this toolkit, now you can script the setup and maintenance of
-an entire network of Qubes OS machines.
+Contributions always welcome.
 
-**Warning: this is a massive hack.**  Please be *absolutely sure* you
-have reviewed this code before using it.  Contributions welcome.
+**Security notes:**
+
+1. Please be *absolutely sure* you have reviewed this code before using it.
+2. These programs are stdin / stdout / stderr proxies over `qubes.VMShell`
+   that allow the calling VM to create interactive and batch sessions in
+   another VM.  Treat the resulting output from the called programs with
+   the appropriate security precautions involving parsing untrusted input.
 
 Bombshell remote shell technology
 ---------------------------------
@@ -86,6 +85,24 @@ create a file `/etc/qubes-rpc/qubes.VMshell` with mode `0644` and make
 sure its contents say `/bin/bash`.
 
 That's it -- `bombshell-client` should work against dom0 now.
+
+Enabling bombshell-client access to VMs in other machines
+---------------------------------------------------------
+
+Do this at your own risk.  On the other machine:
+
+* Ensure that Qubes OS instance has at least one `domU` VM running SSH, which
+   we will call the *target VM*.
+* Ensure the SSH server on that VM is is accessible via the network from the
+   *source VM* (which runs `bombshell-client`).  This includes any firewall
+   and forwarding rules, etc.
+* Ensure the target VM's SSH server lets your source VM log in passwordlessly
+   (pubkey auth).
+* Ensure the policy file in the other machine's `dom0` (the file is located at
+   `/etc/qubes-rpc/policy/qubes.VMShell`) allows  the target VM (the one
+   with the SSH server) to execute `qubes.VMShell` without prompting (otherwise
+   you will have to physically walk over to the other machine and authorize
+   each execution by hand).
 
 How to use this with automation tools like Ansible and SaltStack
 ----------------------------------------------------------------
