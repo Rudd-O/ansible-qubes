@@ -18,7 +18,9 @@ This example assumes you are familiar with:
 
 * [the previous example](../ansible/)
 * Ansible concepts like the inventory, host vars, group vars, and the like
-* the [Salt management stack in Qubes](https://www.qubes-os.org/news/2015/12/14/mgmt-stack/).
+* the [Salt management stack in Qubes](https://www.qubes-os.org/news/2015/12/14/mgmt-stack/)
+* how to set up your [`ansible.cfg`](./ansible.cfg) to point Ansible to the
+   `library` and `action_plugins` directories containing the requisite code.
 
 Additionally, we assume that you are running this sample Ansible setup within
 an AppVM on your Qubes OS machine -- similar to what we did in the basic
