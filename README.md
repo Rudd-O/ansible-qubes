@@ -5,7 +5,7 @@ This software helps you automate development operations on Qubes OS through
 industry-standard configuration management solutions.
 
 **Do you learn better by example?**  Then jump to the directory
-[`examples/ansible/`](examples/ansible/) to  get started right away.
+[`examples/`](examples/) to  get started right away.
 
 The software in this kit includes the following:
 
