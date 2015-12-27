@@ -1,5 +1,5 @@
-Qubes OS DevOps automation toolkit: Ansible example
-==================================================
+Qubes OS DevOps automation toolkit: Basic Ansible example
+========================================================
 
 This is an example of Ansible automation that leverages this toolkit to
 let you manage Qubes VMs.  With it, you'll be managing dozens of VMs
