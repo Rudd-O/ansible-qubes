@@ -19,7 +19,10 @@ The software in this kit includes the following:
 3. A [set of commands for SaltStack `salt-ssh`](./bin/) that fake SSH
    and SCP using `bombshell-client` to enable SaltStack management
    of Qubes OS VMs.
-4. A [set of DevOps automation skeletons / examples](./examples/) to get you up and
+4. A set of [action plugions for Ansible](./ansible/action_plugins/) that
+   interface with the new
+   [Qubes OS 3.1 Salt management stack](https://www.qubes-os.org/news/2015/12/14/mgmt-stack/).
+5. A [set of DevOps automation skeletons / examples](./examples/) to get you up and
    running without having to construct everything yourself.
 
 `bombshell-client` and the other programs in this toolkit that
