@@ -14,6 +14,18 @@ from ansible import utils
 from ansible.callbacks import vvv
 from ansible.inventory import Inventory
 
+
+class QubesRPCError(subprocess.CalledProcessError):
+
+    def __init__(self, returncode, cmd, output=None):
+        subprocess.CalledProcessError.__init__(self, returncode, cmd, output)
+
+    def __str__(self):
+        r = subprocess.CalledProcessError.__str__(self)
+        r = r + " while producing output %r" % self.output
+        return r
+
+
 class Connection(object):
     ''' Qubes based connections '''
 
@@ -105,12 +117,14 @@ class Connection(object):
         try:
           p = subprocess.Popen(
             cmd,
-            stdin = subprocess.PIPE
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
           )
-          p.communicate(file(in_path).read())
+          out, _ = p.communicate(file(in_path).read())
           retval = p.wait()
           if retval != 0:
-            raise subprocess.CalledProcessError(retval, cmd)
+            raise QubesRPCError(retval, cmd, out)
         except subprocess.CalledProcessError:
             traceback.print_exc()
             raise errors.AnsibleError("failed to transfer file to %s" % out_path)
