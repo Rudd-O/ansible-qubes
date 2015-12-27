@@ -107,8 +107,8 @@ Do this at your own risk.  On the other machine:
    you will have to physically walk over to the other machine and authorize
    each execution by hand).
 
-How to use this with automation tools like Ansible and SaltStack
-----------------------------------------------------------------
+How to use the connection technology with automation tools like Ansible and SaltStack
+-------------------------------------------------------------------------------------
 
 You integrate it into your Ansible setup by:
 
