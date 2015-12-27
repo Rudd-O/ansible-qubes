@@ -48,7 +48,11 @@ Defining the requisite variables for the creation of the formula
 ----------------------------------------------------------------
 
 At this point, we need to assign a few variables to each VM we want
-to provision.  Let's start by defining which inventory host will be
+to provision.  Due to the fact that this example's Ansible configuration
+already includes `hash_behaviour = merge` to merge variables
+from different sources, this process will be very easy and flexible.
+
+Let's start by defining which inventory host will be
 the `dom0` for all of the VMs (yes, this system is compatible
 with it being used on multiple Qubes OS machines, so we cannot just
 assume that there's a single `dom0`).
