@@ -1,0 +1,4 @@
+---
+qubes:
+  vm_type: TemplateVM
+  template_vm: fedora-23

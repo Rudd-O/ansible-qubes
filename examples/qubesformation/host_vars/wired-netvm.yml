@@ -1,0 +1,8 @@
+---
+qubes:
+  vm_type: NetVM
+  template_vm: app-template
+  pcidevs:
+  - 00:05.0
+  services:
+    meminfo-writer: False

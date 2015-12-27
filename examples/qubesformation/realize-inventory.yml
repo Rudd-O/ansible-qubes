@@ -1,0 +1,31 @@
+---
+- hosts: dom0
+  sudo: True
+  gather_facts: False
+  tasks:
+  - name: ensure that Salt /srv/user_salt directory exists
+    shell: test -d /srv/user_salt || { qubesctl state.highstate || exit $? ; echo CHANGED ; }
+    register: saltdirs
+    changed_when: "'CHANGED' in saltdirs.stdout"
+    tags:
+    - create
+
+  - name: configure Qubes formation and its top file
+    qubesformation:
+        dest: /srv/user_salt/myprovisionedvms.sls
+    tags:
+    - create
+
+  - name: enable Qubes formation
+    shell: qubesctl top.enabled | grep myprovisionedvms.top || { qubesctl top.enable myprovisionedvms && echo CHANGED || exit 1 ; }
+    register: enableformation
+    changed_when: "'CHANGED' in enableformation.stdout"
+    tags:
+    - realize
+
+  - name: realize Qubes formation
+    qubessls:
+      sls: myprovisionedvms
+      env: user
+    tags:
+    - realize

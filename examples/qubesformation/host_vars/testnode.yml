@@ -1,0 +1,6 @@
+---
+qubes:
+  vm_type: AppVM
+  template_vm: app-template
+  netvm_vm: firewall
+  label: blue

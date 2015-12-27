@@ -164,6 +164,12 @@ and fourth parameters `--management-proxy <M>`, then it is assumed
 that you want to connect to the VM through the IP address of the
 management proxy `<M>`.
 
+How to use the Salt management interface for Qubes in Ansible
+-------------------------------------------------------------
+
+Documentation is a bit sparse at the moment, so the best bet is
+to follow [the tutorial contained in the corresponding example](./examples/qubesformation/).
+
 Bug bounties
 ------------
 

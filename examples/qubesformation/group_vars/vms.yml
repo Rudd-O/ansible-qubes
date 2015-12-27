@@ -1,0 +1,3 @@
+---
+qubes:
+  dom0_vm: dom0

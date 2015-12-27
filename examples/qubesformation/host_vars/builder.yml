@@ -1,0 +1,6 @@
+---
+qubes:
+  vm_type: StandaloneVM
+  template_vm: app-template
+  netvm_vm: firewall
+  label: green

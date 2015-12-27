@@ -1,0 +1,5 @@
+---
+qubes:
+  vm_type: ProxyVM
+  template_vm: app-template
+  netvm_vm: wired-netvm
