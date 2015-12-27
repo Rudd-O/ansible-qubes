@@ -58,7 +58,7 @@ def generate_datastructure(vms):
             qvm.append({'prefs': prefsparms})
 
         # Setup services.
-        if'services' in qubes:
+        if 'services' in qubes:
             s = qubes['services']
             actions.append('service')
             services = []
