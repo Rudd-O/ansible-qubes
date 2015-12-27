@@ -108,7 +108,7 @@ that `qvm-prefs` supports.
 Ansible playbook
 ----------------
 
-Now look at [the playbook](./realize-inventory).  It targets your
+Now look at [the playbook](./realize-inventory.yml).  It targets your
 `dom0`, which is precisely what you want.
 
 There are four main plays in it:
