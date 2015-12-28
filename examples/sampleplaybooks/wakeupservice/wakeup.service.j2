@@ -1,0 +1,13 @@
+[Unit]
+Description=Run wakeup.sh after suspend
+After=basic.target
+After=suspend.target
+After=hibernate.target
+
+[Service]
+ExecStart=/usr/local/bin/wakeup.sh
+
+[Install]
+WantedBy=basic.target
+WantedBy=suspend.target
+WantedBy=hibernate.target
