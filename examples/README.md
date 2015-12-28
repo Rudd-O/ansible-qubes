@@ -8,5 +8,5 @@ as templates to get your own automation started.
 * [ansible/](ansible/) contains a basic example Ansible setup.
 * [qubesformation/](qubesformation/) details how to use the Qubes formation
    Ansible module, used to provision VMs and enforce state on those VMs.
-* [sampleplaybooks](sampleplaybooks/) contains a few sample playbooks
+* [sampleplaybooks/](sampleplaybooks/) contains a few sample playbooks
    you can base your work upon.  More samples are always welcome.
