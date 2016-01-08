@@ -1,5 +1,6 @@
 ---
+
 - hosts: all:!nonqubes
   gather_facts: False
   tasks:
-  - include: tasks/dumpenv.yml
+  - include: 'tasks/dumpenv.yml'
