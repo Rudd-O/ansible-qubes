@@ -1,16 +1,19 @@
 ---
+
 - hosts: templatevms
   sudo: True
   tasks:
-  - name: set up service
+  - name: Set up service
     template:
-      src: wakeup.service.j2
-      dest: /etc/systemd/system/wakeup.service
+      src: 'wakeup.service.j2'
+      dest: '/etc/systemd/system/wakeup.service'
       mode: 0644
-  - name: activate service on next boot
-    service: name=wakeup enabled=True
-  - name: copy shell script
+  - name: Activate service on next boot
+    service:
+      name: 'wakeup'
+      enabled: True
+  - name: Copy shell script
     copy:
-      src: wakeup.sh
-      dest: /usr/local/bin/wakeup.sh
+      src: 'wakeup.sh'
+      dest: '/usr/local/bin/wakeup.sh'
       mode: 0755
