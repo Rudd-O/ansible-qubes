@@ -19,7 +19,7 @@ The software in this kit includes the following:
 3. A [set of commands for SaltStack `salt-ssh`](./bin/) that fake SSH
    and SCP using `bombshell-client` to enable SaltStack management
    of Qubes OS VMs.
-4. A set of [action plugions for Ansible](./ansible/action_plugins/) that
+4. A set of [action plugins for Ansible](./ansible/action_plugins/) that
    interface with the new
    [Qubes OS 3.1 Salt management stack](https://www.qubes-os.org/news/2015/12/14/mgmt-stack/).
 5. A [set of DevOps automation skeletons / examples](./examples/) to get you up and
@@ -29,12 +29,12 @@ The software in this kit includes the following:
 depend on it, can be used to run operations from one VM to another,
 in the following combinations:
 
-* Qubes VM  -> Qubes VM
+* Qubes VM -> Qubes VM
 * Qubes VM -> Qubes `dom0` (see below for enablement instructions)
 * Qubes `dom0` -> Qubes VM
-* Qubes VM -> network (SSH) -> Qubes VM in another machine (see below for
+* Qubes VM -> network (SSH) -> Qubes VM on another Qubes host (see below for
    enablement instructions)
-* normal desktop Linux -> network (SSH) -> Qubes VM in another machine
+* normal desktop Linux -> network (SSH) -> Qubes VM on another Qubes host
 
 What this means for you is quite simple.  With this toolkit, you can completely
 script the setup and maintenance of an entire network of Qubes OS machines.
@@ -52,7 +52,7 @@ Contributions always welcome.
 Bombshell remote shell technology
 ---------------------------------
 
-Bombshell is a way to run commands in other VMs, that employs the `bombshell-client` script on this repository.  Said method is now integrated in these programs and will only work with Qubes OS 3.
+Bombshell is a way to run commands in other VMs, that employs the `bombshell-client` script from this repository.  Said method is now integrated in these programs and will only work with Qubes OS 3.
 
 Direct (non-Ansible and non-SaltStack) usage instructions:
 
@@ -69,7 +69,7 @@ Fairly simple:
     ./bombshell-client vmname bash
 
 starts an interactive bash shell (without a prompt, as there is no tty)
-on the machine `vmname`.  Any progran can be run in this way.  For
+on the machine `vmname`.  Any program can be run in this way.  For
 example:
 
     ./bombshell-client vmname hostname

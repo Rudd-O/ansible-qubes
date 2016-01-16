@@ -157,7 +157,7 @@ Playbooks
 ---------
 
 Everything you've seen so far applies to simple `ansible` runs.  But the real
-worth of Ansible is the possiblity to weave repeatable, idempotent scripts
+worth of Ansible is the possibility to weave repeatable, idempotent scripts
 that involve multiple machines, so you're not constantly repeating yourself.
 Enter [`ansible-playbook`](https://docs.ansible.com/ansible/playbooks.html),
 generously documented there, and exemplified here.
@@ -185,6 +185,6 @@ We ship several different sample playbooks:
    your template VM, which can later be turned on via the Services tab
    of the properties window of VMs based on the template.  In the example,
    the service is named `qubes-helloworld`, so that would be the name
-   of the service toadd and enable on the Services tab. 
+   of the service to add and enable on the Services tab.
 
 More will come as time goes by.  For now, that's all.  Happy hacking!
