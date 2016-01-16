@@ -1,9 +1,14 @@
+---
+
 - hosts: templatevms
   sudo: True
+
   tasks:
-  - name: deploy some editors
-    dnf: pkg={{ item }} state=present
+  - name: Deploy some editors
+    dnf:
+      pkg: '{{ item }}'
+      state: 'present'
     with_items:
-    - emacs
-    - nano
-    - vim
+      - 'emacs'
+      - 'nano'
+      - 'vim'

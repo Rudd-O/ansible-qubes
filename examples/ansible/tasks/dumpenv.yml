@@ -1,8 +1,19 @@
 ---
 
 - name: Remove previous directory
-  local_action: file dest=/tmp/dump state=absent
+  file:
+    path: '/tmp/dump'
+    state: 'absent'
+  delegate_to: 'localhost'
+
 - name: Create directory
-  local_action: shell mkdir -p /tmp/dump || true
+  file:
+    path: '/tmp/dump'
+    state: 'directory'
+  delegate_to: 'localhost'
+
 - name: Dump all vars
-  local_action: template src=files/dumpenv/dumpenv.j2 dest=/tmp/dump/{{ inventory_hostname }}
+  template:
+    src: 'template/dumpenv/dumpenv.j2'
+    dest: '/tmp/dump/{{ inventory_hostname }}'
+  delegate_to: 'localhost'
