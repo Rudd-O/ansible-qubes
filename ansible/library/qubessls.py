@@ -14,7 +14,7 @@ options:
     required: true
     description:
       - The name of the recipe (SLS and top files), as stored in either `/srv/salt` for
-        recipes in the `base` Salt enviornment, or `/srv/user_salt` for those in the `user`
+        recipes in the `base` Salt environment, or `/srv/user_salt` for those in the `user`
         environment.
   env:
     required: false
