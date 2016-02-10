@@ -1,6 +1,15 @@
 #!/usr/bin/python -u
 
 import cPickle
+# Security note:
+#
+# If you look at cPickle usage in bombshell, it's only used to package up
+# the command line at the initiator side, and then it is unpacked at the
+# receiver side.  Given that the initiator has already been given all
+# permissions to run arbitrary programs on the receiver, there is no
+# additional security risk posed by the use of cPickle.
+#
+# End security note.
 import contextlib
 import fcntl
 import os
