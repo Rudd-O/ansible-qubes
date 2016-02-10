@@ -13,12 +13,13 @@ options:
   dest:
     required: true
     description:
-      - Where to deposit the recipe -- usually a path like
+      - |
+        Where to deposit the recipe -- usually a path like
         `/srv/user_salt/<formation name>.sls`).  Will create
         two files:
-        * The file you specified in `description`.
-        * An additional file with a .top extension instead of the
-          original extension of the file you specified.
+        1. The file you specified in `description`.
+        2. An additional file with a .top extension instead of the
+        original extension of the file you specified.
   others:
     description:
       - All arguments accepted by the M(template) module also work here,
