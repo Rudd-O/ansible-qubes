@@ -1,0 +1,8 @@
+{% for user in unix_users %}{% if user.addresses is defined %}
+{% for address in user["addresses"] %}
+{{ address }}     {{ user["name"] }}
+{% endfor %}
+{% endif %}{% endfor %}
+{% for forwarding in forwardings %}
+{{ forwarding["name"] }}    {{ forwarding["addresses"]|join(', ') }}
+{% endfor %}

@@ -1,0 +1,115 @@
+---
+- hosts: mailserver
+  sudo: True
+  vars_files:
+  # Read the instructions in the following file.
+  - vars/mail.yml
+  tasks:
+  - name: install required software
+    package: name={{ item }} state=present
+    with_items:
+    - postgrey
+    - postfix
+    - mailx
+    - procmail
+    - bogofilter
+    - dovecot
+    - dovecot-pigeonhole
+    - incron
+    - ca-certificates
+    tags:
+    - dovecot
+    - postfix
+  - name: remove sendmail
+    package: name=sendmail state=absent
+  - name: enable postgrey
+    service: name=postgrey enabled=yes state=started
+  - include: tasks/ssl.yml
+  - name: install antispam mail delivery files
+    template: src=files/mailserver{{ item }} dest={{ item }} mode=0755 owner=root group=root
+    with_items:
+    - /usr/local/bin/bogofilter-dovecot-deliver
+    - /usr/local/bin/bogofilter-reclassify-mailboxes
+    tags:
+    - postfix
+  - name: install postfix configuration files
+    template: src=files/mailserver{{ item }} dest={{ item }} mode=0644 owner=root group=root
+    with_items:
+    - /etc/postfix/main.cf
+    - /etc/postfix/master.cf
+    - /etc/postfix/virtual
+    register: postfix_config
+    tags:
+    - postfix
+  - name: install dovecot configuration files
+    template: src=files/mailserver{{ item }} dest={{ item }} mode=0644 owner=root group=root
+    with_items:
+    - /etc/dovecot/local.conf
+    register: dovecot_config
+    tags:
+    - dovecot
+  - name: regenerate postfix hashmaps
+    shell: postmap /etc/postfix/virtual
+    when: postfix_config.changed
+    tags:
+    - postfix
+  - name: enable catch-all for root mail
+    lineinfile: state=present dest=/etc/aliases regexp="^root"':'" " line=root':'' '{{ unix_users[0]["name"] }}
+    register: enable_catchall
+  - name: regenerate aliases
+    shell: newaliases
+    when: enable_catchall.changed
+  - name: create user
+    user:
+      name: "{{ item.name }}"
+      createhome: yes
+      comment: "{{ item.gecos }}"
+      password: "{{ item.password | mandatory }}"
+    with_items: unix_users
+  - name: create legacy user inbox
+    file: dest=/var/mail/{{ item.name }} owner={{ item.name }} mode=0660 state=file
+    with_items: unix_users
+  - name: create user maildir
+    file: dest=/home/{{ item.name }}/mail owner={{ item.name }} group={{ item.name }} mode=0700 state=directory
+    with_items: unix_users
+  - name: create user inbox
+    shell: su - {{ item.name }} -c 'cd mail ; test -f "inbox" || { touch "inbox" && chmod 600 "inbox" && echo CREATED ; }'
+    changed_when: '"CREATED" in create_inbox.stdout'
+    with_items: unix_users
+    register: create_inbox
+  - name: create user hambox
+    shell: su - {{ item.name }} -c 'cd mail ; test -f "Mark as ham" || { touch "Mark as ham" && chmod 600 "Mark as ham" && echo CREATED ; }'
+    changed_when: '"CREATED" in create_hambox.stdout'
+    with_items: unix_users
+    register: create_hambox
+  - name: create user spambox
+    shell: su - {{ item.name }} -c 'cd mail ; test -f "Mark as spam" || { touch "Mark as spam" && chmod 600 "Mark as spam" && echo CREATED ; }'
+    changed_when: '"CREATED" in create_spambox.stdout'
+    with_items: unix_users
+    register: create_spambox
+  - name: install antispam mail delivery files
+    template: src=files/mailserver/etc/incron.d/spamclassifier dest=/etc/incron.d/spamclassifier mode=0600 owner=root group=root
+    register: incrontabs
+  - name: enable incron
+    service: name=incrond enabled=yes state={% if create_spambox.changed or create_hambox.changed or incrontabs.changed %}re{% endif %}started
+  - name: enable postfix
+    service: name=postfix enabled=yes state={% if postfix_config.changed or (sslconf is defined and sslconf.changed) %}re{% endif %}started
+    tags:
+    - postfix
+  - name: enable dovecot
+    service: name=dovecot enabled=yes state={% if dovecot_config.changed or (sslconf is defined and sslconf.changed) %}re{% endif %}started
+    tags:
+    - dovecot
+
+- hosts: katrina
+  tasks:
+  - name: test the SMTP and IMAP servers work
+    shell: openssl s_client -starttls {{ item }} -connect localhost:{{ item }} -verify 5 -verify_return_error
+    changed_when: False
+    tags:
+    - test
+    with_items:
+    - imap
+    - smtp
+    always_run: yes
+

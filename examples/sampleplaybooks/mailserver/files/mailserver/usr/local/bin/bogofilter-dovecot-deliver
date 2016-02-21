@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+
+text=`cat`
+alreadyfiltered=`echo "$text" | formail -x X-Bogosity`
+#subject=`echo "$text" | formail -x Subject -c`
+
+if [ -n "$alreadyfiltered" ] ; then
+   #echo "bogofilter-dovecot-deliver: Delivering $subject to Dovecot deliver" >> /tmp/activitylog
+   echo "$text" | /usr/libexec/dovecot/deliver
+else
+   #echo "bogofilter-dovecot-deliver: Delivering $subject to Dovecot deliver piped through Bogofilter" >> /tmp/activitylog
+   echo "$text" | /usr/bin/bogofilter -p -e -u -l | /usr/libexec/dovecot/deliver
+fi
+

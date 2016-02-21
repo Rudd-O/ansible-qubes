@@ -1,0 +1,25 @@
+---
+
+- name: install SSL key
+  template: src=files/secrets/tls{{ item.value.key }} dest={{ item.value.key }} mode=0400 owner=root group=root
+  with_dict: ssl
+  register: ssl_key_deploy
+- name: install SSL host certificate
+  template: src=files/secrets/tls{{ item.value.certificate }} dest={{ item.value.certificate }} mode=0644 owner=root group=root
+  with_dict: ssl
+  register: ssl_cert_deploy
+- name: install SSL intermediate certificates
+  template: src=files/secrets/tls{{ item[1] }} dest={{ item[1] }} mode=0644 owner=root group=root
+  with_subelements:
+  - "{{ssl}}"
+  - intermediates
+  register: ssl_intermediate_deploy
+- name: assemble certificate chain
+  shell: tmpfile=`mktemp` ; cat {{ item['value']['certificate'] }} {{ item['value']['intermediates']|join(' ') }} > $tmpfile ; if ! cmp $tmpfile {{ item['value']['assembled'] }} ; then cat $tmpfile > {{ item['value']['assembled'] }} ; echo CHANGED ; fi ; rm -f $tmpfile
+  with_dict: ssl
+  register: ssl_cert_assemble
+  changed_when: "'CHANGED' in ssl_cert_assemble.stdout"
+- name: detect if SSL configuration changed
+  set_fact:
+    sslconf: '{"changed": {{ ssl_key_deploy.changed or ssl_cert_deploy.changed or ssl_intermediate_deploy.changed or ssl_cert_assemble.changed}} }'
+

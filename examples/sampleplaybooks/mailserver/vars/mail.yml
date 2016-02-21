@@ -1,0 +1,49 @@
+---
+unix_users:
+  - name: james
+    gecos: James Bond
+    password_unencrypted: password
+    password: $5$h/passwordpasswordpassword/password.
+    addresses:
+#        - james@domain.com is tacit
+    - aliastojames@domain.com
+    - james@bond.name
+  - name: john
+    gecos: John the Ripper role account
+#         addresses:
+#        - john@domain.com is tacit
+    password: $9$YWpasswordpasswordpassword/password/
+forwardings:
+  - name: notalist@domain.com
+    addresses:
+    - james@domain.com
+    - john@hotmail.com
+  - name: shawna@goody.com
+    addresses:
+    - shawna@gmail.com
+mail:
+  hostname: mailserver.domain.com
+  domain: domain.com
+  origin: domain.com
+  destination_domains:
+  - mailserver.domain.com
+  - domain.com
+  - bond.name
+ssl:
+  # Deploy your key files locally in the Ansible master node
+  # within folder files/secrets/tls, relative to the
+  # ../role-mailserver.yml file.  Edit these variables
+  # to fit the file names of your keys.  Then look at the
+  # templates within files/mailserver/etc/postfix and 
+  # files/mailserver/etc/dovecot to modify the appropriate
+  # SSL key file parameters so that these variables
+  # can be reused there (search for "mailserver.domain.com"
+  # in the files of this repository to get an idea where
+  # that hostname needs to be replaced with yours).
+  mailserver.domain.com:
+    key:           /etc/pki/tls/private/mailserver.domain.com.key
+    intermediates:
+    # The order matters.  At the bottom of the stack must be the one closest to the root of trust.
+    - /etc/pki/tls/certs/CABUNDLE.crt
+    certificate:   /etc/pki/tls/certs/mailserver_domain_com.crt
+    assembled:     /etc/pki/tls/certs/assembled_mailserver.domain.com.crt

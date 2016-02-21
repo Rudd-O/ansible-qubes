@@ -1,0 +1,45 @@
+#!/bin/bash
+
+export PATH=$HOME/bin:/usr/local/bin:$PATH
+
+if [ "$1" == "as-spam" ] ; then
+
+        content=`cat`
+        subject=`echo "$content" | formail -x Subject -c`
+        logger -t bogofilter-reclassify-mailboxes "Marking $subject as spam"
+        echo "$content" | bogofilter -p -e -Ns -M | formail -I 'X-Bogosity: spam, manually classified' -s /usr/local/bin/bogofilter-dovecot-deliver
+
+elif [ "$1" == "as-ham" ] ; then
+
+        content=`cat`
+        subject=`echo "$content" | formail -x Subject -c`
+        logger -t bogofilter-reclassify-mailboxes "Marking $subject as ham"
+        echo "$content" | bogofilter -p -e -Sn -M | formail -I 'X-Bogosity: ham, manually classified'  -s /usr/local/bin/bogofilter-dovecot-deliver
+
+else
+
+        logger -t bogofilter-reclassify-mailboxes "Initiating reclassification"
+        if test -s ~/mail/\Mark\ as\ spam
+        then
+                flock ~/mail/\Mark\ as\ spam bash -c '
+                        logger -t bogofilter-reclassify-mailboxes "There is spam"
+                        formail -s '"$0"' as-spam < ~/mail/\Mark\ as\ spam
+                        /bin/echo -n > ~/mail/\Mark\ as\ spam
+                '
+        else
+                logger -t bogofilter-reclassify-mailboxes "There is no spam"
+        fi
+
+        if test -s ~/mail/\Mark\ as\ ham
+        then
+                flock ~/mail/\Mark\ as\ ham bash -c '
+                        logger -t bogofilter-reclassify-mailboxes "There is ham"
+                        formail -s '"$0"' as-ham  < ~/mail/\Mark\ as\ ham
+                        /bin/echo -n > ~/mail/\Mark\ as\ ham
+                '
+        else
+                logger -t bogofilter-reclassify-mailboxes "There is no ham"
+        fi
+
+fi
+
