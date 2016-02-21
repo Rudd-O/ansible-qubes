@@ -29,14 +29,14 @@ mail:
   - mailserver.domain.com
   - domain.com
   - bond.name
-  ssl: mailserver.domain.com
 ssl:
   # Deploy your key files locally in the Ansible master node
   # within folder files/secrets/tls, relative to the
   # ../role-mailserver.yml file.  Edit these variables
   # to fit the file names of your keys.
-  # This dictionary is also referred by name above, so if
-  # you alter the name of the dictonary, alter it there too.
+  # The followig key mailserver.domain.com must match the
+  # `mail.hostname` variable defined in this file.  If you
+  # alter it here, alter it there too.
   mailserver.domain.com:
     key:           /etc/pki/tls/private/mailserver.domain.com.key
     intermediates:
