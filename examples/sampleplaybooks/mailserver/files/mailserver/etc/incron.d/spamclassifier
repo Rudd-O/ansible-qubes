@@ -1,4 +1,0 @@
-{% for item in unix_users %}
-/home/{{ item["name"] }}/mail/Mark\ as\ ham IN_CLOSE_WRITE /usr/sbin/runuser -u {{ item["name"] }} /usr/local/bin/bogofilter-reclassify-mailboxes
-/home/{{ item["name"] }}/mail/Mark\ as\ spam IN_CLOSE_WRITE /usr/sbin/runuser -u {{ item["name"] }} /usr/local/bin/bogofilter-reclassify-mailboxes
-{% endfor %}
