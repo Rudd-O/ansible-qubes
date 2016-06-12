@@ -127,16 +127,16 @@ class Connection(ConnectionBase):
                 try:
                     p = self._buffered_exec_command('dd of=%s bs=%s' % (out_path, BUFSIZE), stdin=in_file)
                 except OSError:
-                    raise AnsibleError("chroot connection requires dd command in the chroot")
+                    raise errors.AnsibleError("chroot connection requires dd command in the chroot")
                 try:
                     stdout, stderr = p.communicate()
                 except:
                     traceback.print_exc()
-                    raise AnsibleError("failed to transfer file %s to %s" % (in_path, out_path))
+                    raise errors.AnsibleError("failed to transfer file %s to %s" % (in_path, out_path))
                 if p.returncode != 0:
-                    raise AnsibleError("failed to transfer file %s to %s:\n%s\n%s" % (in_path, out_path, stdout, stderr))
+                    raise errors.AnsibleError("failed to transfer file %s to %s:\n%s\n%s" % (in_path, out_path, stdout, stderr))
         except IOError:
-            raise AnsibleError("file or module does not exist at: %s" % in_path)
+            raise errors.AnsibleError("file or module does not exist at: %s" % in_path)
 
     def _prefix_login_path(self, remote_path):
         ''' Make sure that we put files into a standard path
@@ -162,7 +162,7 @@ class Connection(ConnectionBase):
         try:
             p = self._buffered_exec_command('dd if=%s bs=%s' % (in_path, BUFSIZE))
         except OSError:
-            raise AnsibleError("Qubes connection requires dd command in the chroot")
+            raise errors.AnsibleError("Qubes connection requires dd command in the chroot")
 
         with open(out_path, 'wb+') as out_file:
             try:
@@ -172,10 +172,10 @@ class Connection(ConnectionBase):
                     chunk = p.stdout.read(BUFSIZE)
             except:
                 traceback.print_exc()
-                raise AnsibleError("failed to transfer file %s to %s" % (in_path, out_path))
+                raise errors.AnsibleError("failed to transfer file %s to %s" % (in_path, out_path))
             stdout, stderr = p.communicate()
             if p.returncode != 0:
-                raise AnsibleError("failed to transfer file %s to %s:\n%s\n%s" % (in_path, out_path, stdout, stderr))
+                raise errors.AnsibleError("failed to transfer file %s to %s:\n%s\n%s" % (in_path, out_path, stdout, stderr))
 
     def close(self):
         ''' terminate the connection; nothing to do here '''
