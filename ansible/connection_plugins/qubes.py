@@ -42,9 +42,9 @@ class Connection(ConnectionBase):
     become_from_methods = frozenset(["sudo"])
     _management_proxy = None
 
-    def set_host_overrides(self, host):
-        host_vars = combine_vars(host.get_group_vars(), host.get_vars())
-        _management_proxy = host_vars.get("_management_proxy", None)
+#    def set_host_overrides(self, host):
+#        host_vars = combine_vars(host.get_group_vars(), host.get_vars())
+#        _management_proxy = host_vars.get("_management_proxy", None)
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
