@@ -1,5 +1,6 @@
 #!/usr/bin/python3 -u
 
+import base64
 import pickle
 import contextlib
 import ctypes
@@ -80,45 +81,6 @@ class LoggingEmu():
 logging = None
 
 
-def send_command(chan, cmd):
-  """Sends a command over the wire.
-
-  Args:
-    chan: writable file-like object to send the command to
-    cmd: command to send, iterable of strings
-  """
-  pickled = pickle.dumps(cmd)
-  l = len(pickled)
-  assert l < 1<<32, l
-  chan.write(struct.pack("!I", l))
-  chan.write(pickled)
-  chan.flush()
-  logging.debug("Sent command: %s", cmd)
-
-
-def recv_command(chan):
-  l = struct.unpack("!I", sys.stdin.read(4))[0]
-  pickled = chan.read(l)
-  cmd = pickle.loads(pickled)
-  logging.debug("Received command: %s", cmd)
-  return cmd
-
-
-def send_beacon(chan):
-  l = chan.write(b"1")
-  if l != 1:
-    raise Exception("Beacon could not be sent")
-  chan.flush()
-  logging.debug("Sent beacon")
-
-
-def recv_beacon(chan):
-  m = chan.read(1)
-  if not m or len(m) != 1:
-    raise Exception("Beacon never received")
-  logging.debug("Received beacon")
-
-
 def send_confirmation(chan, retval, errmsg):
   chan.write(struct.pack("!H", retval))
   l = len(errmsg)
@@ -151,13 +113,13 @@ class MyThread(threading.Thread):
 
   def run(self):
     try:
-       self._run()
+        self._run()
     except Exception as e:
-       logging.error("%s: unexpected exception", threading.currentThread())
-       tb = traceback.format_exc()
-       logging.error("%s: traceback: %s", threading.currentThread(), tb)
-       logging.error("%s: exiting program", threading.currentThread())
-       os._exit(16)
+        logging.error("%s: unexpected exception", threading.currentThread())
+        tb = traceback.format_exc()
+        logging.error("%s: traceback: %s", threading.currentThread(), tb)
+        logging.error("%s: exiting program", threading.currentThread())
+        os._exit(124)
 
 
 class SignalSender(MyThread):
@@ -175,7 +137,7 @@ class SignalSender(MyThread):
     self.queue.put(signum)
     logging.debug("Signal %s pushed to queue", signum)
 
-  def run(self):
+  def _run(self):
     while True:
       signum = self.queue.get()
       logging.debug("Dequeued signal %s", signum)
@@ -196,7 +158,7 @@ class Signaler(MyThread):
     self.process = process
     self.sigqueue = sigqueue
 
-  def run(self):
+  def _run(self):
     while True:
         data = self.sigqueue.read(2)
         if len(data) == 0:
@@ -283,7 +245,7 @@ class DataDemultiplexer(MyThread):
     self.source = source
     unblock(source)
 
-  def run(self):
+  def _run(self):
     logging.debug("demux: Started with source %s and sinks %s", self.source, self.sinks)
     buffer = bytearray(MAX_MUX_READ)
     while self.sinks:
@@ -323,20 +285,12 @@ def main_master():
   remote_command = args[1:]
   assert remote_command
 
-#  if debug_enabled:
-#    remote_helper_text = b"""
-#f=$(mktemp)
-#echo '%s' > "$f"
-#chmod +x "$f"
-#exec "$f" -s -d
-#""" % (open(__file__, "rb").read().replace(b"'", b"'\\''"))
-#  else:
-  remote_helper_text = b"\n".join([
-      b"exec %s -u -c '" % bytes(sys.executable, "utf-8"),
-      open(__file__, "rb").read().replace(b"'", b"'\\''"),
-      b"'" + (b" -d" if debug_enabled else b""),
-      b"",
-  ])
+  remote_helper_text = b"exec %s -u -c %s%s %s\n" % (
+      bytes(sys.executable, "utf-8"),
+      bytes(pipes.quote(open(__file__, "r").read()), "ascii"),
+      (b" -d" if debug_enabled else b""),
+      base64.b64encode(pickle.dumps(remote_command)),
+  )
 
   saved_stderr = openfdforappend(os.dup(sys.stderr.fileno()))
 
@@ -358,14 +312,6 @@ def main_master():
       p.stdin.write(remote_helper_text)
       p.stdin.flush()
 
-      try:
-          recv_beacon(p.stdout)
-      except Exception as e:
-          logging.error("%s", e)
-          p.kill()
-          return 124
-
-      send_command(p.stdin, remote_command)
       confirmation, errmsg = recv_confirmation(p.stdout)
       if confirmation != 0:
         logging.error("remote: %s", errmsg)
@@ -415,15 +361,13 @@ def main_remote():
   global debug_enabled
   if "-d" in sys.argv[1:]:
       debug_enabled =  True
+      cmd = sys.argv[2]
+  else:
+      cmd = sys.argv[1]
 
-  try:
-      send_beacon(sys.stdout)
-  except Exception as e:
-      logging.error("%s", e)
-      p.kill()
-      return 124
+  cmd = pickle.loads(base64.b64decode(cmd))
+  logging.debug("Received command: %s", cmd)
 
-  cmd = recv_command(sys.stdin)
   nicecmd = " ".join(pipes.quote(a) for a in cmd)
   try:
     p = subprocess.Popen(
