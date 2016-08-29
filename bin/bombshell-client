@@ -60,9 +60,6 @@ class LoggingEmu():
     def debug(self, *a, **kw):
         if not debug_enabled:
             return
-        for p in ("copy", "write", "Unblocking"):
-            if a[0].startswith(p):
-                return
         self._print(syslog.LOG_DEBUG, *a, **kw)
     def info(self, *a, **kw):
         self._print(syslog.LOG_INFO, *a, **kw)
