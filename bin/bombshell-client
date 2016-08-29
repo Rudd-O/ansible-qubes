@@ -210,7 +210,6 @@ class Signaler(MyThread):
 
 
 def unblock(fobj):
-  logging.debug("Unblocking file object %s", fobj)
   os.set_blocking(fobj.fileno(), False)
 
 
@@ -223,7 +222,6 @@ def write(dst, buffer, l):
             raise Exception("copy: Failed to write any bytes")
         mv = mv[writtenthisloop:]
         alreadywritten = alreadywritten + writtenthisloop
-    logging.debug("write: Relayed %s bytes to sink %s", alreadywritten, dst)
 
 
 def copy(src, dst, buffer, l):
@@ -237,7 +235,6 @@ def copy(src, dst, buffer, l):
             raise Exception("copy: Failed to read any bytes")
         mv = mv[readthisloop:]
         alreadyread = alreadyread + readthisloop
-    logging.debug("copy: Read %s bytes from %s", alreadyread, src)
     return write(dst, buffer, l)
 
 
@@ -256,23 +253,18 @@ class DataMultiplexer(MyThread):
     sources, _, x = select.select((s for s in self.sources), (), (s for s in self.sources))
     assert not x, x
     while sources:
-      logging.debug("mux: Sources that alarmed: %s", [self.sources[s] for s in sources])
       for s in sources:
         n = self.sources[s]
         logging.debug("mux: Source %s (%s) is active", n, s)
         readthisloop = s.readinto(buffer)
         if readthisloop == 0:
-          logging.debug("mux: Received no bytes from source %s", n)
+          logging.debug("mux: Received no bytes from source %s, signaling peer to close corresponding source", n)
           del self.sources[s]
           header = struct.pack(PACKFORMAT, n, False, 0)
-          logging.debug("mux: Sending packet: %s" % header)
           self.sink.write(header)
-          logging.debug("mux: Informed sink about death of source %s", n)
           continue
         l = readthisloop
-        logging.debug("mux: Received %s bytes from source %s", l, n)
         header = struct.pack(PACKFORMAT, n, True, l)
-        logging.debug("mux: Sending packet: %s" % header)
         self.sink.write(header)
         write(self.sink, buffer, l)
       if not self.sources:
@@ -297,11 +289,8 @@ class DataDemultiplexer(MyThread):
     while self.sinks:
       r, _, x = select.select([self.source], (), [self.source])
       assert not x, x
-      logging.debug("demux: Source alarmed")
       for s in r:
-        logging.debug("demux: Source %s is active", s)
         header = s.read(PACKLEN)
-        logging.debug("demux: received packet: %s" % header)
         if header == "":
           logging.debug("demux: Received no bytes from source, closing all sinks")
           for sink in self.sinks.values():
@@ -314,7 +303,6 @@ class DataDemultiplexer(MyThread):
           self.sinks[n].close()
           del self.sinks[n]
         else:
-          logging.debug("demux: Source %s is sending %s bytes, relaying to corresponding sink", s, l)
           copy(self.source, self.sinks[n], buffer, l)
     logging.debug("demux: End of data demultiplexer")
 
@@ -323,13 +311,13 @@ def main_master():
   global logging
   logging = LoggingEmu("master")
 
+  logging.info("Started with arguments: %s", sys.argv[1:])
+
   global debug_enabled
   args = sys.argv[1:]
   if args[0] == "-d":
       args = args[1:]
       debug_enabled = True
-
-  logging.info("Started with arguments: %s", sys.argv[1:])
 
   remote_vm = args[0]
   remote_command = args[1:]
@@ -422,11 +410,11 @@ def main_remote():
   global logging
   logging = LoggingEmu("remote")
 
+  logging.info("Started with arguments: %s", sys.argv[1:])
+
   global debug_enabled
   if "-d" in sys.argv[1:]:
       debug_enabled =  True
-
-  logging.info("Started with arguments: %s", sys.argv[1:])
 
   try:
       send_beacon(sys.stdout)
