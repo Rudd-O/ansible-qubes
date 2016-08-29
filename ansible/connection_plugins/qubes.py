@@ -6,7 +6,7 @@
 import distutils.spawn
 import traceback
 import os
-import shutil
+import shlex
 import subprocess
 import pipes
 from ansible import errors
@@ -85,9 +85,9 @@ class Connection(ConnectionBase):
     def _produce_command(self, cmd):
         # FIXME
         # proxy = ["--proxy=%s" % self._management_proxy] if self._management_proxy else []
-        chroot = self.chroot
         if isinstance(cmd, basestring):
-            assert 0, "cannot deal with basestrings like " + cmd
+            unsplit = shlex.split(cmd)
+            return [self.qrun, self.chroot] + unsplit
         #if proxy:
         #  local_cmd = [self.qrun] + proxy + [chroot] + cmd
         #else:
@@ -103,7 +103,7 @@ class Connection(ConnectionBase):
         compared to exec_command() it looses some niceties like being able to
         return the process's exit code immediately.
         '''
-        local_cmd = self._produce_command(["/bin/sh", "-c", cmd])
+        local_cmd = self._produce_command(cmd)
         display.vvv("EXEC %s" % (local_cmd), host=self.chroot)
         return subprocess.Popen(local_cmd, shell=False, stdin=stdin,
                                 stdout=subprocess.PIPE,
@@ -121,11 +121,11 @@ class Connection(ConnectionBase):
         super(Connection, self).put_file(in_path, out_path)
         display.vvv("PUT %s TO %s" % (in_path, out_path), host=self.chroot)
 
-        out_path = pipes.quote(self._prefix_login_path(out_path))
+        out_path = self._prefix_login_path(out_path)
         try:
             with open(in_path, 'rb') as in_file:
                 try:
-                    p = self._buffered_exec_command('dd of=%s bs=%s' % (out_path, BUFSIZE), stdin=in_file)
+                    p = self._buffered_exec_command(['dd','of=%s' % out_path, 'bs=%s' % BUFSIZE], stdin=in_file)
                 except OSError:
                     raise errors.AnsibleError("chroot connection requires dd command in the chroot")
                 try:
@@ -157,10 +157,9 @@ class Connection(ConnectionBase):
         super(Connection, self).fetch_file(in_path, out_path)
         display.vvv("FETCH %s TO %s" % (in_path, out_path), host=self.chroot)
 
-        in_path = pipes.quote(self._prefix_login_path(in_path))
-
+        in_path = self._prefix_login_path(in_path)
         try:
-            p = self._buffered_exec_command('dd if=%s bs=%s' % (in_path, BUFSIZE))
+            p = self._buffered_exec_command(['dd', 'if=%s' % in_path, 'bs=%s' % BUFSIZE])
         except OSError:
             raise errors.AnsibleError("Qubes connection requires dd command in the chroot")
 
