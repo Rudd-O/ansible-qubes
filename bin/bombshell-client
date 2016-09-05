@@ -172,7 +172,10 @@ class Signaler(MyThread):
 
 
 def unblock(fobj):
-  os.set_blocking(fobj.fileno(), False)
+  if hasattr(os, "set_blocking"):
+    return os.set_blocking(fobj.fileno(), False)
+  fl = fcntl.fcntl(fobj, fcntl.F_GETFL)
+  fcntl.fcntl(fobj, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
 
 def write(dst, buffer, l):
