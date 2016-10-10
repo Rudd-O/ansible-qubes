@@ -33,9 +33,11 @@ if remotehost:
     therest_template = ("test -x ./.bombshell-client || "
                         "python -c 'import os; file(\"./.bombshell-client\", \"wb\").write(\"%s\".decode(\"hex_codec\")); os.chmod(\"./.bombshell-client\", 0700)' || "
                         "exit 127 ;"
-                        "export BOMBSHELL_DEBUG=%s ;"
-                        "./.bombshell-client %s %s")
-    therest = therest_template % (poop, pipes.quote(os.getenv("BOMBSHELL_DEBUG")), pipes.quote(host), args)
+                        "./.bombshell-client %s %s %s")
+    therest = therest_template % (poop,
+                                  "-d" if os.getenv("BOMBSHELL_DEBUG") else "",
+                                  pipes.quote(host),
+                                  args)
     cmd = [
         'ssh',
         '-o', 'BatchMode yes',

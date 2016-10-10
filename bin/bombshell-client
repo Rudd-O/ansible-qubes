@@ -9,7 +9,10 @@ import errno
 import fcntl
 import os
 import pipes
-import queue
+try:
+    import queue
+except ImportError:
+    import Queue as queue
 import select
 import signal
 import struct
@@ -38,17 +41,27 @@ def mutexfile(filepath):
     f.close()
 
 
+def unset_cloexec(fd):
+    old = fcntl.fcntl(fd, fcntl.F_GETFD)
+    fcntl.fcntl(fd, fcntl.F_SETFD, old & ~ fcntl.FD_CLOEXEC)
+
+
 def openfdforappend(fd):
+  f = None
   try:
-    return os.fdopen(fd, "ab", 0, closefd=False)
+    f = os.fdopen(fd, "ab", 0)
   except IOError as e:
     if e.errno != errno.ESPIPE:
       raise
-    return os.fdopen(fd, "wb", 0, closefd=False)
+    f = os.fdopen(fd, "wb", 0)
+  unset_cloexec(f.fileno())
+  return f
 
 
 def openfdforread(fd):
-  return os.fdopen(fd, "rb", 0, closefd=False)
+  f = os.fdopen(fd, "rb", 0)
+  unset_cloexec(f.fileno())
+  return f
 
 
 debug_lock = threading.Lock()
@@ -171,18 +184,12 @@ class Signaler(MyThread):
     logging.debug("End of signaler")
 
 
-def unblock(fobj):
-  if hasattr(os, "set_blocking"):
-    return os.set_blocking(fobj.fileno(), False)
-  fl = fcntl.fcntl(fobj, fcntl.F_GETFL)
-  fcntl.fcntl(fobj, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-
 def write(dst, buffer, l):
     alreadywritten = 0
     mv = memoryview(buffer)[:l]
     while len(mv):
-        writtenthisloop = dst.write(mv)
+        dst.write(mv)
+        writtenthisloop = len(mv)
         if writtenthisloop is None or writtenthisloop < 1:
             raise Exception("copy: Failed to write any bytes")
         mv = mv[writtenthisloop:]
@@ -210,14 +217,13 @@ class DataMultiplexer(MyThread):
     self.setDaemon(True)
     self.sources = dict((s,num) for num, s in enumerate(sources))
     self.sink = sink
-    for s in sources: unblock(s)
 
   def _run(self):
     logging.debug("mux: Started with sources %s and sink %s", self.sources, self.sink)
     buffer = bytearray(MAX_MUX_READ)
-    sources, _, x = select.select((s for s in self.sources), (), (s for s in self.sources))
-    assert not x, x
-    while sources:
+    while self.sources:
+      sources, _, x = select.select((s for s in self.sources), (), (s for s in self.sources))
+      assert not x, x
       for s in sources:
         n = self.sources[s]
         logging.debug("mux: Source %s (%s) is active", n, s)
@@ -232,10 +238,6 @@ class DataMultiplexer(MyThread):
         header = struct.pack(PACKFORMAT, n, True, l)
         self.sink.write(header)
         write(self.sink, buffer, l)
-      if not self.sources:
-        break
-      sources, _, x = select.select((s for s in self.sources), (), (s for s in self.sources))
-      assert not x, x
     logging.debug("mux: End of data multiplexer")
 
 
@@ -246,7 +248,6 @@ class DataDemultiplexer(MyThread):
     self.setDaemon(True)
     self.sinks = dict(enumerate(sinks))
     self.source = source
-    unblock(source)
 
   def _run(self):
     logging.debug("demux: Started with source %s and sinks %s", self.source, self.sinks)
@@ -288,12 +289,17 @@ def main_master():
   remote_command = args[1:]
   assert remote_command
 
-  remote_helper_text = b"exec %s -u -c %s%s %s\n" % (
-      bytes(sys.executable, "utf-8"),
-      bytes(pipes.quote(open(__file__, "r").read()), "ascii"),
-      (b" -d" if debug_enabled else b""),
-      base64.b64encode(pickle.dumps(remote_command)),
-  )
+  def anypython(exe):
+      return "` test -x %s && echo %s || echo python`" % (pipes.quote(exe),
+                                                          pipes.quote(exe))
+
+  remote_helper_text = b"exec "
+  remote_helper_text += bytes(anypython(sys.executable), "utf-8")
+  remote_helper_text += bytes(" -u -c ", "utf-8")
+  remote_helper_text += bytes(pipes.quote(open(__file__, "r").read()), "ascii")
+  remote_helper_text += b" -d " if debug_enabled else b" "
+  remote_helper_text += base64.b64encode(pickle.dumps(remote_command, 2))
+  remote_helper_text += b"\n"
 
   saved_stderr = openfdforappend(os.dup(sys.stderr.fileno()))
 

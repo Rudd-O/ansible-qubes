@@ -42,9 +42,10 @@ class Connection(ConnectionBase):
     become_from_methods = frozenset(["sudo"])
     _management_proxy = None
 
-#    def set_host_overrides(self, host):
-#        host_vars = combine_vars(host.get_group_vars(), host.get_vars())
-#        _management_proxy = host_vars.get("_management_proxy", None)
+    def set_host_overrides(self, host, hostvars):
+        self._management_proxy = hostvars.get("management_proxy", None)
+        if self._management_proxy:
+            self.chroot = hostvars.get("inventory_hostname_short")
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
@@ -64,9 +65,6 @@ class Connection(ConnectionBase):
         if not self.qrun:
             raise errors.AnsibleError("qrun command not found in PATH")
 
-        if self._management_proxy:
-            assert 0, "still do not know how to deal with management proxy"
-
     def _connect(self):
         """Connect to the host we've been initialized with"""
 
@@ -84,14 +82,11 @@ class Connection(ConnectionBase):
 
     def _produce_command(self, cmd):
         # FIXME
-        # proxy = ["--proxy=%s" % self._management_proxy] if self._management_proxy else []
+        proxy = ["--proxy=%s" % self._management_proxy] if self._management_proxy else []
         if isinstance(cmd, basestring):
             unsplit = shlex.split(cmd)
-            return [self.qrun, self.chroot] + unsplit
-        #if proxy:
-        #  local_cmd = [self.qrun] + proxy + [chroot] + cmd
-        #else:
-        local_cmd = [self.qrun, self.chroot] + cmd
+            return [self.qrun] + proxy + [self.chroot] + unsplit
+        local_cmd = [self.qrun] + proxy + [self.chroot] + cmd
         local_cmd = map(to_bytes, local_cmd)
         return local_cmd
 
