@@ -48,6 +48,18 @@ like you did before.
 Assuming you have set up Ansible on your manager machine, [integrate
 Ansible Qubes into your setup](./Enhance your Ansible with Ansible Qubes.md).
 
+Now test that you can run commands using `qrun`.  In your manager
+machine, run in a terminal:
+
+```
+qrun --proxy=x.y.z.w exp-net hostname
+```
+
+This should immediately return with `exp-net` as output on the terminal,
+indicating that `qrun` successfully connected to `exp-manager` and then
+invoked `bombshell-client` on it, requesting the execution of `hostname`
+on `exp-net`.
+
 Now, to your Ansible `hosts` file, add an inventory entry:
 
 ```

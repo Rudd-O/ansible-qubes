@@ -1,5 +1,7 @@
 # Enhance your Ansible with Ansible Qubes
 
+## Deploy the software to the right places
+
 Integrate this software into your Ansible setup by:
 
 1. setting up a `connections_plugin = <directory>` in your `ansible.cfg`
@@ -12,6 +14,21 @@ Integrate this software into your Ansible setup by:
   * Anywhere on your Ansible machine's `PATH`.
   * In a `../../bin` directory relative to the `qubes.py` file.
 
+## Test `qrun` works
+
+Test that `qrun` does the job.  In the VM where you integrated your
+Ansible setup, run:
+
+```
+path/to/qrun <some VM> hostname
+```
+
+This should immediately return with the hostname of `<some VM>`,
+indicating that `qrun` successfully invoked `bombshell-client` on it,
+requesting the execution of `hostname` on `exp-net`.
+
+## Register VMs on your Ansible inventory
+
 After having done that, you can add Qubes VMs to your Ansible `hosts` file:
 
 ```
@@ -20,7 +37,7 @@ workvm          ansible_connection=qubes
 # The next line has a parameter which indicates to Ansible to first
 # connect to the domU SSH at 1.2.3.4 before attempting to use
 # bombshell-client to manage other VMs on the same system.
-# See below for instructions to enable remoting.
+# See README.md for pointers to enabling remote management of Qubes servers.
 vmonremotehost  ansible_connection=qubes management_proxy=1.2.3.4
 ```
 
