@@ -91,74 +91,15 @@ That's it -- `bombshell-client` should work against dom0 now.
 How to use the connection technology with automation tools like Ansible
 -----------------------------------------------------------------------
 
-You integrate it into your Ansible setup by:
-
-1. setting up a `connections_plugin = <directory>` in your `ansible.cfg`
-   file, pointing it to a directory you control, then
-2. placing the `qubes.py` connection plugin in your Ansible
-   `connection_plugins` directory as defined above, then
-3. placing the `qrun` and `bombshell-client` executables in one of two
-   locations:
-
-  * Anywhere on your Ansible machine's `PATH`.
-  * In a `../../bin` directory relative to the `qubes.py` file.
-
-After having done that, you can add Qubes VMs to your Ansible `hosts` file:
-
-```
-# The next line declares a simple connection to a domU on the same system.
-workvm          ansible_connection=qubes
-# The next line has a parameter which indicates to Ansible to first
-# connect to the domU SSH at 1.2.3.4 before attempting to use
-# bombshell-client to manage other VMs on the same system.
-# See below for instructions to enable remoting.
-vmonremotehost  ansible_connection=qubes management_proxy=1.2.3.4
-```
-
-You are now free to run `ansible-playbook` or `ansible` against those hosts.
-So long as those programs can find your `ansible.cfg` file, and your `hosts`
-file, it will work.  Note that Qubes OS will bother you every time you run
-commands with the prompt to allow `qubes.VMShell` on the target VM you're
-managing, unless you set said permission to default to yes (the pertinent
-file to edit is in the `dom0` of the target Qubes OS machine, path
-`/etc/qubes-rpc/policy/qubes.VMShell`).
+See [Enhance your Ansible with Ansible Qubes](doc/Enhance your Ansible with Ansible Qubes.md).
 
 Enabling bombshell-client remote access to VMs in other machines
 ----------------------------------------------------------------
 
-Do this at your own risk.  On the other machine:
+See [Remote management of Qubes OS servers](doc/Remote management of Qubes OS servers.md).
 
-* Ensure that Qubes OS instance has at least one `domU` VM running SSH, which
-  we will call the *target VM*.  It's usually best to use a StandaloneVM for
-  the purpose.
-* Enable remote network access to that VM by using
-  [Qubes network server](https://github.com/Rudd-O/qubes-network-server).
-  Set the necessary firewall rules on the VM to permit SSH connections from
-  the source VM.
-* Ensure the target VM's SSH server lets your source VM log in passwordlessly
-  (pubkey auth).
-* Ensure the policy file in the other machine's `dom0` (the file is located at
-  `/etc/qubes-rpc/policy/qubes.VMShell`) allows the target VM (the one
-  with the SSH server) to execute `qubes.VMShell` without prompting (otherwise
-  you will have to physically walk over to the other machine and authorize
-  each execution by hand).  Usually a line `targetvm $anyvm allow` suffices.
-
-After declaring in your Ansible `hosts` file the VMs on the other machine that
-you want to manage, add the following host attribute to each one.
-
-```
-vmonremotehost  ansible_connection=qubes management_proxy=<IP of domU running SSH>
-```
-
-That's it.  Running `ansible vmonremotehost -m shell -a whoami` should provide
-you with a crisp visual of the results of `whoami` on the VM `vmonremotehost`.
-
-The `management_proxy` variable tells the Ansible Qubes connection plugin
-to first bridge the connection via SSH over to the target VM, and to then
-execute `bombshell-client` to gain access to `vmonremotehost`.
-
-How to use the connection technology with Ansible
--------------------------------------------------
+How to use the connection technology with SaltStack
+---------------------------------------------------
 
 You can also integrate this plugin with SaltStack's `salt-ssh` program, by:
 
