@@ -1,8 +1,16 @@
 # Enhance your Ansible with Ansible Qubes
 
+This set of instructions assumes that you:
+
+* are running within a Qubes OS system
+* have an AppVM already set up (we'll call it `managevm`)
+* have cloned this repository into that VM
+* have Ansible installed in that VM
+* have an Ansible setup already going on within that VM
+
 ## Deploy the software to the right places
 
-Integrate this software into your Ansible setup by:
+Integrate this software into your Ansible setup (within your `managevm`) VM) by:
 
 1. setting up a `connections_plugin = <directory>` in your `ansible.cfg`
    file, pointing it to a directory you control, then
@@ -13,6 +21,46 @@ Integrate this software into your Ansible setup by:
 
   * Anywhere on your Ansible machine's `PATH`.
   * In a `../../bin` directory relative to the `qubes.py` file.
+
+## Set up the policy file for `qubes.VMShell`
+
+Edit (as `root`) the file `/etc/qubes-rpc/policy/qubes.VMShell`
+located on the file system of your `dom0`.
+
+At the top of the file, add the following two lines:
+
+```
+managevm $anyvm allow
+```
+
+This first line lets `managevm` execute any commands on any VM on your
+system.  You can also supply an `ask` policy instead of the `allow`
+policy specified above.  Note that `ask` will make Qubes OS bother you
+every time you run commands (and Ansible plays) with the standard
+security prompt to allow `qubes.VMShell` on the target VM you're managing.
+
+Now save that file, and exit your editor.
+
+### Optional: allow `managevm` to manage `dom0`
+
+Before the line you added in the previous step, add this line:
+
+```
+managevm dom0 allow
+```
+
+This line lets `managevm` execute any commands in `dom0`.  Be sure you
+understand the security implications of such a thing.
+
+The next step is to add the RPC service proper.  Edit the file
+`/etc/qubes-rpc/qubes.VMShell` to have a single line that contains:
+
+```
+exec bash
+```
+
+That is it.  `dom0` should work now.
+
 
 ## Test `qrun` works
 
@@ -25,7 +73,7 @@ path/to/qrun <some VM> hostname
 
 This should immediately return with the hostname of `<some VM>`,
 indicating that `qrun` successfully invoked `bombshell-client` on it,
-requesting the execution of `hostname` on `exp-net`.
+requesting the execution of `hostname` in `<some VM>`.
 
 ## Register VMs on your Ansible inventory
 
@@ -43,8 +91,4 @@ vmonremotehost  ansible_connection=qubes management_proxy=1.2.3.4
 
 You are now free to run `ansible-playbook` or `ansible` against those hosts.
 So long as those programs can find your `ansible.cfg` file, and your `hosts`
-file, it will work.  Note that Qubes OS will bother you every time you run
-commands with the prompt to allow `qubes.VMShell` on the target VM you're
-managing, unless you set said permission to default to yes (the pertinent
-file to edit is in the `dom0` of the target Qubes OS machine, path
-`/etc/qubes-rpc/policy/qubes.VMShell`).
+file, it will work.
