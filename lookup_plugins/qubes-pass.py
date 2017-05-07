@@ -30,7 +30,7 @@ class LookupModule(LookupBase):
         try:
             ret = subprocess.check_output(cmd)[:-1]
         except subprocess.CalledProcessError as e:
-            if e.retcode == 8:
+            if e.returncode == 8:
                 raise AnsibleError("qubes-pass could not locate password entry %s in store" % entry)
             else:
                 raise AnsibleError("qubes-pass lookup failed: %s" % e)
