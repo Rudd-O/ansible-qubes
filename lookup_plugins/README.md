@@ -30,7 +30,7 @@ the key will be created automatically with a 32 character password.
 You can also explicitly specify the VM:
 
 ```
-    thepassword: '{{ lookup("qubes-pass", "loginpwds/John Smith", vm=vault) }}'
+    thepassword: '{{ lookup("qubes-pass", "loginpwds/John Smith", vm="vault") }}'
 ```
 
 You can also disable automatic creation of the password.  This will simply
