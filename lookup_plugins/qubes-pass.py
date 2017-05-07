@@ -22,7 +22,7 @@ class LookupModule(LookupBase):
         if create:
             cmd += ['get-or-generate']
         else:
-            cmd += ['get-or-generate']
+            cmd += ['get']
         cmd += ['--', entry]
 
         display.vvvv(u"Password lookup using command %s" % cmd)
