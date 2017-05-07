@@ -1,5 +1,6 @@
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
+from ansible.module_utils._text import to_text
 
 import subprocess
 
@@ -12,7 +13,7 @@ except ImportError:
 
 class LookupModule(LookupBase):
 
-    def run(self, entry, variables=None, vm=None, create=True):
+    def run(self, args, variables=None, vm=None, create=True):
 
         ret = []
 
@@ -23,7 +24,7 @@ class LookupModule(LookupBase):
             cmd += ['get-or-generate']
         else:
             cmd += ['get']
-        cmd += ['--', entry]
+        cmd += ['--', args[0]]
 
         display.vvvv(u"Password lookup using command %s" % cmd)
 
@@ -35,4 +36,4 @@ class LookupModule(LookupBase):
             else:
                 raise AnsibleError("qubes-pass lookup failed: %s" % e)
 
-        return ret
+        return [ret]
