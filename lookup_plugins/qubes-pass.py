@@ -1,4 +1,4 @@
-from ansible.errors import AnsibleError, AnsibleParserError
+from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 
 import subprocess
