@@ -24,6 +24,9 @@ The software in this kit includes the following:
    [Qubes OS 3.1 Salt management stack](https://www.qubes-os.org/news/2015/12/14/mgmt-stack/).
 5. A [set of DevOps automation skeletons / examples](./examples/) to get you up and
    running without having to construct everything yourself.
+6. A [lookup plugin](./lookup_plugins) for
+   [`qubes-pass`](https://github.com/Rudd-O/qubes-pass) to get you to
+   store passwords needed to manage your infrastructure in separate VMs.
 
 `bombshell-client` and the other programs in this toolkit that
 depend on it, can be used to run operations from one VM to another,
