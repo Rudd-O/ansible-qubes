@@ -12,7 +12,7 @@ except ImportError:
 
 class LookupModule(LookupBase):
 
-    def run(self, args, variables=None, vm=None, create=True):
+    def run(self, args, variables=None, vm=None, create=True, no_symbols=''):
 
         ret = []
 
@@ -21,6 +21,8 @@ class LookupModule(LookupBase):
             cmd += ['-d', vm]
         if create:
             cmd += ['get-or-generate']
+            if no_symbols:
+                cmd += ["-n", no_symbols]
         else:
             cmd += ['get']
         cmd += ['--', args[0]]
