@@ -26,6 +26,9 @@ The software in this kit includes the following:
    running without having to construct everything yourself.
 6. A [lookup plugin](./lookup_plugins) for
    [`qubes-pass`](https://github.com/Rudd-O/qubes-pass) to get you to
+   look up passwords for your infrastructure stored in separate VMs.
+6. A [module and action plugin](./library) for
+   [`qubes-pass`](https://github.com/Rudd-O/qubes-pass) to get you to
    store passwords needed to manage your infrastructure in separate VMs.
 
 `bombshell-client` and the other programs in this toolkit that
