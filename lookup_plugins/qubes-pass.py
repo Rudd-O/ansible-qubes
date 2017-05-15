@@ -10,9 +10,12 @@ except ImportError:
     display = Display()
 
 
+UNDEFINED = object()
+
+
 class LookupModule(LookupBase):
 
-    def run(self, args, variables=None, vm=None, create=True, no_symbols=False):
+    def run(self, args, variables=None, vm=None, create=True, no_symbols=False, default=UNDEFINED):
 
         ret = []
 
@@ -33,7 +36,9 @@ class LookupModule(LookupBase):
             ret = subprocess.check_output(cmd)[:-1]
         except subprocess.CalledProcessError as e:
             if e.returncode == 8:
-                raise AnsibleError("qubes-pass could not locate password entry %s in store" % entry)
+                if create or default is UNDEFINED:
+                    raise AnsibleError("qubes-pass could not locate password entry %s in store" % args[0])
+                return [default]
             else:
                 raise AnsibleError("qubes-pass lookup failed: %s" % e)
 
