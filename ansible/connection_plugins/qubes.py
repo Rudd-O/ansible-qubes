@@ -14,7 +14,6 @@ from ansible import utils
 from ansible.utils.display import Display
 display = Display()
 from ansible.plugins.connection import ConnectionBase
-from ansible.inventory import Inventory
 from ansible.utils.vars import combine_vars
 from ansible.module_utils._text import to_bytes
 from ansible.utils.unicode import to_unicode, to_str
