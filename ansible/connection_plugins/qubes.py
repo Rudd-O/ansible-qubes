@@ -42,7 +42,7 @@ class Connection(ConnectionBase):
     become_from_methods = frozenset(["sudo"])
     _management_proxy = None
 
-    def set_host_overrides(self, host, hostvars):
+    def set_host_overrides(self, host, hostvars, templar):
         self._management_proxy = hostvars.get("management_proxy", None)
         if self._management_proxy:
             self.chroot = hostvars.get("inventory_hostname_short")
