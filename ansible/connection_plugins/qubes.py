@@ -2,6 +2,34 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+__metaclass__ = type
+
+DOCUMENTATION = """
+    author:
+        - Manuel Amador (Rudd-O)
+
+    connection: qubes
+
+    short_description: Execute tasks in Qubes VMs.
+
+    description:
+        - Use the qssh command to run commands in Qubes OS VMs.
+
+    version_added: "2.0"
+
+    requirements:
+      - qssh (Python script from ansible-qubes)
+
+    options:
+      management_proxy:
+        description:
+          - Management proxy.  A machine accessible via SSH that can run qrexec.
+        default: ''
+        vars:
+          - name: management_proxy
+        env:
+          - name: MANAGEMENT_PROXY
+"""
 
 import distutils.spawn
 import traceback
@@ -16,11 +44,14 @@ display = Display()
 from ansible.plugins.connection import ConnectionBase
 from ansible.utils.vars import combine_vars
 from ansible.module_utils._text import to_bytes
-from ansible.utils.unicode import to_unicode, to_str
 from ansible import constants as C
 
 
 BUFSIZE = 1024*1024
+CONNECTION_TRANSPORT = "qubes"
+CONNECTION_OPTIONS = {
+    'management_proxy': '--management-proxy',
+}
 
 
 class QubesRPCError(subprocess.CalledProcessError):
@@ -37,90 +68,75 @@ class QubesRPCError(subprocess.CalledProcessError):
 class Connection(ConnectionBase):
     ''' Qubes based connections '''
 
-    transport = "qubes"
+    transport = CONNECTION_TRANSPORT
+    connection_options = CONNECTION_OPTIONS
+    documentation = DOCUMENTATION
     has_pipelining = False
     become_from_methods = frozenset(["sudo"])
-    _management_proxy = None
-
-    def set_host_overrides(self, host, hostvars, templar):
-        self._management_proxy = hostvars.get("management_proxy", None)
-        if self._management_proxy:
-            self.chroot = hostvars.get("inventory_hostname_short")
+    transport_cmd = None
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
-        self.chroot = self._play_context.remote_addr
 
-        self.qrun = distutils.spawn.find_executable('qrun')
-        if not self.qrun:
-            self.qrun = os.path.join(
+        self.transport_cmd = distutils.spawn.find_executable('qrun')
+        if not self.transport_cmd:
+            self.transport_cmd = os.path.join(
                 os.path.dirname(__file__),
                 os.path.pardir,
                 os.path.pardir,
                 "bin",
                 "qrun",
             )
-            if not os.path.exists(self.qrun):
-              self.qrun = None
-        if not self.qrun:
+            if not os.path.exists(self.transport_cmd):
+              self.transport_cmd = None
+        if not self.transport_cmd:
             raise errors.AnsibleError("qrun command not found in PATH")
 
     def _connect(self):
-        """Connect to the host we've been initialized with"""
-
-        # Check if PE is supported
-        if self._play_context.become:
-            self._become_method_supported()
-
-    def connect(self):
-        ''' connect to the chroot; nothing to do here '''
-
+        '''Connect to the VM; nothing to do here '''
         super(Connection, self)._connect()
-        display.vvv("THIS IS A QUBES VM", host=self.chroot)
-
-        return self
+        if not self._connected:
+            display.vvv("THIS IS A QUBES VM", host=self._play_context.remote_addr)
+            self._connected = True
 
     def _produce_command(self, cmd):
-        # FIXME
-        proxy = ["--proxy=%s" % self._management_proxy] if self._management_proxy else []
+        addr = self._play_context.remote_addr
+        proxy = self.get_option("management_proxy")
+        if proxy:
+            proxy = ["--proxy=%s" % proxy] if proxy else []
+            addr = addr.split(".")[0]
+        else:
+            proxy = []
         if isinstance(cmd, basestring):
-            unsplit = shlex.split(cmd)
-            return [self.qrun] + proxy + [self.chroot] + unsplit
-        local_cmd = [self.qrun] + proxy + [self.chroot] + cmd
-        local_cmd = map(to_bytes, local_cmd)
-        return local_cmd
-
-    def _buffered_exec_command(self, cmd, stdin=subprocess.PIPE):
-        ''' run a command on the chroot.  This is only needed for implementing
-        put_file() get_file() so that we don't have to read the whole file
-        into memory.
-
-        compared to exec_command() it looses some niceties like being able to
-        return the process's exit code immediately.
-        '''
-        local_cmd = self._produce_command(cmd)
-        display.vvv("EXEC %s" % (local_cmd), host=self.chroot)
-        return subprocess.Popen(local_cmd, shell=False, stdin=stdin,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
+            cmd = shlex.split(cmd)
+        cmd = [self.transport_cmd] + proxy + [addr] + cmd
+        display.vvv("COMMAND %s" % (cmd,), host=self._play_context.remote_addr)
+        return cmd
 
     def exec_command(self, cmd, in_data=None, sudoable=False):
-        ''' run a command on the chroot '''
+        '''Run a command on the VM.'''
         super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
-        p = self._buffered_exec_command(cmd)
+        cmd = self._produce_command(cmd)
+        cmd = [to_bytes(i, errors='surrogate_or_strict') for i in cmd]
+        p = subprocess.Popen(cmd, shell=False, stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
         stdout, stderr = p.communicate(in_data)
         return (p.returncode, stdout, stderr)
 
     def put_file(self, in_path, out_path):
         ''' transfer a file from local to VM '''
         super(Connection, self).put_file(in_path, out_path)
-        display.vvv("PUT %s TO %s" % (in_path, out_path), host=self.chroot)
+        display.vvv("PUT %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
 
         out_path = self._prefix_login_path(out_path)
         try:
             with open(in_path, 'rb') as in_file:
                 try:
-                    p = self._buffered_exec_command(['dd','of=%s' % out_path, 'bs=%s' % BUFSIZE], stdin=in_file)
+                    cmd = self._produce_command(['dd','of=%s' % out_path, 'bs=%s' % BUFSIZE])
+                    p = subprocess.Popen(cmd, shell=False, stdin=in_file,
+                                         stdout=subprocess.PIPE,
+                                         stderr=subprocess.PIPE)
                 except OSError:
                     raise errors.AnsibleError("chroot connection requires dd command in the chroot")
                 try:
@@ -150,11 +166,14 @@ class Connection(ConnectionBase):
     def fetch_file(self, in_path, out_path):
         ''' fetch a file from VM to local '''
         super(Connection, self).fetch_file(in_path, out_path)
-        display.vvv("FETCH %s TO %s" % (in_path, out_path), host=self.chroot)
+        display.vvv("FETCH %s TO %s" % (in_path, out_path), host=self._play_context.remote_addr)
 
         in_path = self._prefix_login_path(in_path)
         try:
-            p = self._buffered_exec_command(['dd', 'if=%s' % in_path, 'bs=%s' % BUFSIZE])
+            cmd = self._produce_command(['dd', 'if=%s' % in_path, 'bs=%s' % BUFSIZE])
+            p = subprocess.Popen(cmd, shell=False, stdin=open(os.devnull),
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
         except OSError:
             raise errors.AnsibleError("Qubes connection requires dd command in the chroot")
 
@@ -173,4 +192,5 @@ class Connection(ConnectionBase):
 
     def close(self):
         ''' terminate the connection; nothing to do here '''
-        pass
+        super(Connection, self).close()
+        self._connected = False
