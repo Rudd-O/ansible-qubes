@@ -1,7 +1,7 @@
 ---
 
 - hosts: templatevms
-  sudo: True
+  become: True
   tasks:
   - name: Set up service
     template:

@@ -1,6 +1,6 @@
 ---
 - hosts: dom0
-  sudo: True
+  become: True
   gather_facts: False
   tasks:
   - name: ensure that Salt /srv/user_salt directory exists
