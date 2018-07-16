@@ -349,18 +349,27 @@ class Connection(ConnectionBase):
         if yesno == "Y\n":
             try:
                 retcode = self._transport.stdout.readline(16)
-                retcode = int(retcode)
+                try:
+                    retcode = int(retcode)
+                except Exception:
+                    raise errors.AnsibleError("return code from remote end is unexpected: %r" % retcode)
                 if retcode > 65536 or retcode < -65535:
-                    raise errors.AnsibleError("return code from remote end is outside the range: %s" % retcode)
+                    raise errors.AnsibleError("return code from remote end is outside the range: %r" % retcode)
                 stdout_len = self._transport.stdout.readline(16)
-                stdout_len = int(stdout_len)
+                try:
+                    stdout_len = int(stdout_len)
+                except Exception:
+                    raise errors.AnsibleError("stdout size from remote end is unexpected: %r" % stdout_len)
                 if stdout_len > 1024*1024*1024 or stdout_len < 0:
-                    raise errors.AnsibleError("stdout size from remote end is invalid: %s" % stdout_len)
+                    raise errors.AnsibleError("stdout size from remote end is invalid: %r" % stdout_len)
                 stdout = self._transport.stdout.read(stdout_len) if stdout_len != 0 else ''
                 if len(stdout) != stdout_len:
                     raise errors.AnsibleError("stdout size from remote end does not match actual stdout length: %s != %s" % (stdout_len, len(stdout)))
                 stderr_len = self._transport.stdout.readline(16)
-                stderr_len = int(stderr_len)
+                try:
+                    stderr_len = int(stderr_len)
+                except Exception:
+                    raise errors.AnsibleError("stderr size from remote end is unexpected: %r" % stderr_len)
                 if stdout_len > 1024*1024*1024 or stdout_len < 0:
                     raise errors.AnsibleError("stderr size from remote end is invalid: %s" % stderr_len)
                 stderr = self._transport.stdout.read(stderr_len) if stderr_len != 0 else ''
@@ -375,7 +384,7 @@ class Connection(ConnectionBase):
             raise exc
         else:
             self._abort_transport()
-            raise errors.AnsibleError("pass/fail from remote end is unexpected: %s" % yesno)
+            raise errors.AnsibleError("pass/fail from remote end is unexpected: %r" % yesno)
 
     def put_file(self, in_path, out_path):
         '''Transfer a file from local to VM.'''
@@ -393,7 +402,7 @@ class Connection(ConnectionBase):
             raise exc
         else:
             self._abort_transport()
-            raise errors.AnsibleError("pass/fail from remote end is unexpected: %s" % yesno)
+            raise errors.AnsibleError("pass/fail from remote end is unexpected: %r" % yesno)
         with open(in_path, 'rb') as in_file:
             while True:
                 chunk = in_file.read(BUFSIZE)
@@ -415,7 +424,7 @@ class Connection(ConnectionBase):
                     raise exc
                 else:
                     self._abort_transport()
-                    raise errors.AnsibleError("pass/fail from remote end is unexpected: %s" % yesno)
+                    raise errors.AnsibleError("pass/fail from remote end is unexpected: %r" % yesno)
 
     def fetch_file(self, in_path, out_path):
         '''Fetch a file from VM to local.'''
@@ -437,9 +446,9 @@ class Connection(ConnectionBase):
                         raise exc
                     else:
                         self._abort_transport()
-                        raise errors.AnsibleError("chunk size from remote end is unexpected: %s" % chunk_len)
+                        raise errors.AnsibleError("chunk size from remote end is unexpected: %r" % chunk_len)
                 if chunk_len > BUFSIZE or chunk_len < 0:
-                    raise errors.AnsibleError("chunk size from remote end is invalid: %s" % chunk_len)
+                    raise errors.AnsibleError("chunk size from remote end is invalid: %r" % chunk_len)
                 if chunk_len == 0:
                     break
                 chunk = self._transport.stdout.read(chunk_len)
