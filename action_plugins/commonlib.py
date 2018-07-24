@@ -30,6 +30,8 @@ def inject_qubes(inject):
             if vmitem == "template_vm":
                 if "_template" in hostvars and not "template_vm" in qubes:
                     qubes["template_vm"] = hostvars["_template"]
+                elif invhostname + "-template" in inject["groups"]:
+                    qubes["template_vm"] = inject["groups"][invhostname + "-template"][0]
             if vmitem in qubes:
                 t = qubes[vmitem]
                 if t is None or t.lower() == "none":
