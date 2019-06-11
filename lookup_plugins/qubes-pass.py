@@ -1,6 +1,7 @@
 from ansible.errors import AnsibleError
 from ansible.plugins.lookup import LookupBase
 
+import sys
 import subprocess
 
 try:
@@ -42,4 +43,6 @@ class LookupModule(LookupBase):
             else:
                 raise AnsibleError("qubes-pass lookup failed: %s" % e)
 
-        return [ret]
+        if sys.version_info.major == 2:
+            return [ret]
+        return [ret.decode("utf-8")]

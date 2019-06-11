@@ -55,7 +55,11 @@ except ImportError:
     display = Display()
 class x(object):
     def vvvv(self, text, host=None):
-        print >> file("/tmp/log", "ab"), text, host
+        with open(os.path.expanduser("~/ansible-qubes.log"), "a") as f:
+            print(text, host, file=f)
+    def vvv(self, text, host=None):
+        with open(os.path.expanduser("~/ansible-qubes.log"), "a") as f:
+            print(text, host, file=f)
 display = x()
 
 
@@ -182,14 +186,14 @@ if __name__ == '__main__':
     import StringIO
     s = StringIO.StringIO()
     try:
-        file("/doesnotexist")
+        open("/doesnotexist")
     except Exception as e:
         encode_exception(e, s)
         s.seek(0)
         dec = decode_exception(s)
 
 
-preamble = '''
+preamble = b'''
 from __future__ import print_function
 import sys, os, subprocess
 sys.ps1 = ''
@@ -197,13 +201,13 @@ sys.ps2 = ''
 sys.stdin = os.fdopen(sys.stdin.fileno(), 'rb', 0) if hasattr(sys.stdin, 'buffer') else sys.stdin
 sys.stdout = sys.stdout.buffer if hasattr(sys.stdout, 'buffer') else sys.stdout
 '''
-payload = '\n\n'.join(
-    inspect.getsource(x)
+payload = b'\n\n'.join(
+    inspect.getsource(x).encode("utf-8")
     for x in (encode_exception, popen, put, fetch)
 ) + \
-r'''
+b'''
 
-_ = sys.stdout.write(b'OK\n')
+_ = sys.stdout.write(b'OK\\n')
 sys.stdout.flush()
 '''
 
@@ -245,9 +249,15 @@ class Connection(ConnectionBase):
     transport_cmd = None
     _transport = None
 
+    def set_options(self, task_keys=None, var_options=None, direct=None):
+        super(Connection, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
+        # FIXME HORRIBLE WORKAROUND FIXME
+        if task_keys['delegate_to'] and 'management_proxy' in self._options:
+            self._options['management_proxy'] = ''
+
     def __init__(self, play_context, new_stdin, *args, **kwargs):
         super(Connection, self).__init__(play_context, new_stdin, *args, **kwargs)
-        display.vvvv("INSTANTIATING %s" % (os.getppid(),), host=play_context.remote_addr)
+        display.vvv("INSTANTIATING %s %s" % (os.getppid(), id(self)), host=play_context.remote_addr)
 
         if 'transport_cmd' in kwargs:
             self.transport_cmd = kwargs['transport_cmd']
@@ -277,20 +287,26 @@ class Connection(ConnectionBase):
         ution of Ansible modules against VMs, whether local or remote
         via SSH.  In other words, we have pipelining now.
         '''
+        display.vvv("CONNECTING %s %s %s" % (os.getppid(), id(self), self.get_option("management_proxy")), host=self._play_context.remote_addr)
         super(Connection, self)._connect()
+        #if self._play_context.remote_addr == 'ring2-buildserver':
+        #    assert 0, dir(self)
+        #    assert 0, self._play_context.serialize()
+        #    assert 0, [x for x in dir(self._play_context) if callable(getattr(self._play_context, x))]
         if not self._connected:
             remote_cmd = [to_bytes(x, errors='surrogate_or_strict') for x in [
                 # 'strace', '-s', '2048', '-o', '/tmp/log',
                  'python', '-i', '-c', preamble
             ]]
             addr = self._play_context.remote_addr
-            proxy = self.get_option("management_proxy")
+            proxy = to_bytes(self.get_option("management_proxy")) if self.get_option("management_proxy") else ""
             if proxy:
-                proxy = ["--proxy=%s" % proxy] if proxy else []
+                proxy = [b"--proxy=%s" % proxy] if proxy else []
                 addr = addr.split(".")[0]
             else:
                 proxy = []
-            cmd = self.transport_cmd + proxy + [addr] + remote_cmd
+            addr = to_bytes(addr)
+            cmd = [to_bytes(x) for x in self.transport_cmd] + proxy + [addr] + remote_cmd
             display.vvvv("CONNECT %s" % (cmd,), host=self._play_context.remote_addr)
             self._transport = subprocess.Popen(
                 cmd, shell=False, stdin=subprocess.PIPE,
@@ -300,8 +316,9 @@ class Connection(ConnectionBase):
                 self._transport.stdin.write(payload)
                 self._transport.stdin.flush()
                 ok = self._transport.stdout.readline(16)
-                if not ok.startswith("OK\n"):
-                    raise errors.AnsibleError("the remote end of the Qubes connection was not ready")
+                if not ok.startswith(b"OK\n"):
+                    cmdquoted =  " ".join(pipes.quote(x.decode("utf-8")) for x in cmd)
+                    raise errors.AnsibleError("the remote end of the Qubes connection was not ready: %s yielded %r" % (cmdquoted, ok))
             except Exception:
                 self._abort_transport()
                 raise
@@ -335,18 +352,20 @@ class Connection(ConnectionBase):
     def exec_command(self, cmd, in_data=None, sudoable=False):
         '''Run a command on the VM.'''
         super(Connection, self).exec_command(cmd, in_data=in_data, sudoable=sudoable)
+        try: basestring
+        except NameError: basestring = str
         if isinstance(cmd, basestring):
             cmd = shlex.split(cmd)
         display.vvvv("EXEC %s" % cmd, host=self._play_context.remote_addr)
         try:
-            payload = 'popen(%r, %r)\n' % (cmd, in_data)
+            payload = ('popen(%r, %r)\n' % (cmd, in_data)).encode("utf-8")
             self._transport.stdin.write(payload)
             self._transport.stdin.flush()
             yesno = self._transport.stdout.readline(2)
         except Exception:
             self._abort_transport()
             raise
-        if yesno == "Y\n":
+        if yesno == "Y\n" or yesno == b"Y\n":
             try:
                 retcode = self._transport.stdout.readline(16)
                 try:
@@ -379,7 +398,7 @@ class Connection(ConnectionBase):
             except Exception:
                 self._abort_transport()
                 raise
-        elif yesno == "N\n":
+        elif yesno == "N\n" or yesno == b"N\n":
             exc = decode_exception(self._transport.stdin)
             raise exc
         else:
@@ -392,12 +411,12 @@ class Connection(ConnectionBase):
         display.vvvv("PUT %s to %s" % (in_path, out_path), host=self._play_context.remote_addr)
         out_path = _prefix_login_path(out_path)
         payload = 'put(%r)\n' % (out_path,)
-        self._transport.stdin.write(payload)
+        self._transport.stdin.write(payload.encode("utf-8"))
         self._transport.stdin.flush()
         yesno = self._transport.stdout.readline(2)
-        if yesno == "Y\n":
+        if yesno == "Y\n" or yesno == b"Y\n":
             pass
-        elif yesno == "N\n":
+        elif yesno == "N\n" or yesno == b"N\n":
             exc = decode_exception(self._transport.stdin)
             raise exc
         else:
@@ -407,7 +426,7 @@ class Connection(ConnectionBase):
             while True:
                 chunk = in_file.read(BUFSIZE)
                 try:
-                    self._transport.stdin.write("%s\n" % len(chunk))
+                    self._transport.stdin.write(("%s\n" % len(chunk)).encode("utf-8"))
                     self._transport.stdin.flush()
                     if len(chunk) == 0:
                         break
@@ -417,9 +436,9 @@ class Connection(ConnectionBase):
                     self._abort_transport()
                     raise
                 yesno = self._transport.stdout.readline(2)
-                if yesno == "Y\n":
+                if yesno == "Y\n" or yesno == b"Y\n":
                     pass
-                elif yesno == "N\n":
+                elif yesno == "N\n" or yesno == b"N\n":
                     exc = decode_exception(self._transport.stdin)
                     raise exc
                 else:
@@ -434,7 +453,7 @@ class Connection(ConnectionBase):
         out_file = open(out_path, "wb")
         try:
             payload = 'fetch(%r, %r)\n' % (in_path, BUFSIZE)
-            self._transport.stdin.write(payload)
+            self._transport.stdin.write(payload.encode("utf-8"))
             self._transport.stdin.flush()
             while True:
                 chunk_len = self._transport.stdout.readline(16)

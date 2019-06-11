@@ -180,7 +180,10 @@ class Signaler(MyThread):
         assert len(data) == 2
         signum = struct.unpack("!H", data)[0]
         logging.debug("Received relayed signal %s, sending to process %s", signum, self.process.pid)
-        self.process.send_signal(signum)
+        try:
+            self.process.send_signal(signum)
+        except BaseException as e:
+            logging.error("Failed to relay signal %s to process %s: %s", signum, self.process.pid, e)
     logging.debug("End of signaler")
 
 
