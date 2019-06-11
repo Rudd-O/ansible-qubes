@@ -3,7 +3,7 @@
 %define mybuildnumber %{?build_number}%{?!build_number:1}
 
 Name:           ansible-qubes
-Version:        0.0.2
+Version:        0.0.4
 Release:        %{mybuildnumber}%{?dist}
 Summary:        Inter-VM program execution for Qubes OS AppVMs and StandaloneVMs
 BuildArch:      noarch
@@ -15,7 +15,7 @@ Source0:        https://github.com/Rudd-O/%{name}/archive/{%version}.tar.gz#/%{n
 BuildRequires:  make
 BuildRequires:  gawk
 
-Requires:       python2
+Requires:       python3
 
 %description
 This package lets you execute programs between VMs as if it was SSH.
