@@ -1,6 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/python3 -u
 
-import pipes
+try:
+    from pipes import quote
+except ImportError:
+    from shlex import quote
 import os
 import subprocess
 import sys
@@ -28,16 +31,29 @@ else:
     ] + parms
 
 if remotehost:
-    args = " ".join(pipes.quote(x) for x in parms)
-    poop = file(path_to_bombshell, "rb").read().encode("hex_codec")
-    therest_template = ("test -x ./.bombshell-client || "
-                        "python -c 'import os; file(\"./.bombshell-client\", \"wb\").write(\"%s\".decode(\"hex_codec\")); os.chmod(\"./.bombshell-client\", 0700)' || "
-                        "exit 127 ;"
-                        "./.bombshell-client %s %s %s")
-    therest = therest_template % (poop,
-                                  "-d" if os.getenv("BOMBSHELL_DEBUG") else "",
-                                  pipes.quote(host),
-                                  args)
+    args = " ".join(quote(x) for x in parms)
+    with open(path_to_bombshell, "r") as f:
+        poop = quote(f.read())
+    therest_template = ('''
+        set -e
+        which bombshell-client >/dev/null 2>&1 && {
+            exec bombshell-client %s %s %s
+        } || {
+            echo %s > .bombshell-client.tmp
+            chmod +x .bombshell-client.tmp
+            mv -fT .bombshell-client.tmp .bombshell-client
+            exec ./.bombshell-client %s %s %s
+        }
+    ''')
+    therest = therest_template % (
+        "-d" if os.getenv("BOMBSHELL_DEBUG") else "",
+        quote(host),
+        args,
+        poop,
+        "-d" if os.getenv("BOMBSHELL_DEBUG") else "",
+        quote(host),
+        args,
+    )
     cmd = [
         'ssh',
         '-o', 'BatchMode yes',
