@@ -27,8 +27,6 @@ class LookupModule(LookupBase):
             cmd += ['get-or-generate']
             if no_symbols:
                 cmd += ["-n"]
-        else:
-            cmd += ['get']
         cmd += ['--', args[0]]
 
         display.vvvv(u"Password lookup using command %s" % cmd)
