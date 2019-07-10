@@ -34,7 +34,7 @@ class LookupModule(LookupBase):
         try:
             ret = subprocess.check_output(cmd)
             if not multiline:
-                ret = ret[:-1]
+                ret = ret[:-1].decode("utf-8")
         except subprocess.CalledProcessError as e:
             if e.returncode == 8:
                 if create or default is UNDEFINED:
