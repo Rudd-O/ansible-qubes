@@ -16,7 +16,7 @@ UNDEFINED = object()
 
 class LookupModule(LookupBase):
 
-    def run(self, args, variables=None, vm=None, create=True, no_symbols=False, default=UNDEFINED):
+    def run(self, args, variables=None, vm=None, create=True, multiline=False, no_symbols=False, default=UNDEFINED):
 
         ret = []
 
@@ -32,7 +32,9 @@ class LookupModule(LookupBase):
         display.vvvv(u"Password lookup using command %s" % cmd)
 
         try:
-            ret = subprocess.check_output(cmd)[:-1]
+            ret = subprocess.check_output(cmd)
+            if not multiline:
+                ret = ret[:-1]
         except subprocess.CalledProcessError as e:
             if e.returncode == 8:
                 if create or default is UNDEFINED:
@@ -41,6 +43,4 @@ class LookupModule(LookupBase):
             else:
                 raise AnsibleError("qubes-pass lookup failed: %s" % e)
 
-        if sys.version_info.major == 2:
-            return [ret]
-        return [ret.decode("utf-8")]
+        return [ret]

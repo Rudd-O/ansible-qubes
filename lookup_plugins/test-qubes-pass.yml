@@ -1,0 +1,42 @@
+- hosts: localhost
+  gather_facts: no
+  tasks:
+  - name: delete
+    shell: |
+      qvm-pass rm test-qubes-pass || true
+
+  - name: test qubes-pass lookup
+    shell: |
+      password={{ lookup("qubes-pass", "test-qubes-pass") | quote }}
+      echo "$password"
+    register: firsttry
+  - name: test qubes-pass lookup second time
+    shell: |
+      password={{ lookup("qubes-pass", "test-qubes-pass") | quote }}
+      echo "$password"
+    register: secondtry
+  - name: evaluate if they match
+    shell: |
+      firsttry={{ firsttry.stdout | quote }}
+      secondtry={{ secondtry.stdout | quote }}
+      if [ "$firsttry" != "$secondtry" ] ; then echo no match ; exit 8 ; fi
+  - name: delete
+    shell: qvm-pass rm test-qubes-pass
+
+  - name: generate randomness
+    shell: |
+      pwd
+      dd if=/dev/urandom of=.randomdata bs=16384 count=1
+  - name: test qubes-pass insert
+    shell: |
+      qvm-pass insert -m test-qubes-pass < .randomdata
+  - name: evaluate if they match
+    shell: |
+      set -e
+      echo {{ lookup("qubes-pass", "test-qubes-pass", create=False, multiline=True) | b64encode | quote }} | base64 -d > .randomdatafetched
+      ls -la .randomdata .randomdatafetched
+      diff .randomdata .randomdatafetched
+  - name: delete
+    shell: |
+      qvm-pass rm test-qubes-pass
+      rm -f .randomdata .randomdatafetched
