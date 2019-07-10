@@ -39,3 +39,12 @@ fail if the password does not exist:
 ```
     thepassword: '{{ lookup("qubes-pass", "loginpwds/John Smith", create=False) }}'
 ```
+
+If the password you expect to fetch is multiline/binary, you can retrieve
+it correctly like this:
+
+```
+    thepassword: '{{ lookup("qubes-pass", "loginpwds/John Smith", multiline=True) | b64encode }}'
+```
+
+then later base64 decode it on target.
