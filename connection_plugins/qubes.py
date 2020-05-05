@@ -450,30 +450,30 @@ class Connection(ConnectionBase):
         super(Connection, self).fetch_file(in_path, out_path)
         display.vvvv("FETCH %s to %s" % (in_path, out_path), host=self._play_context.remote_addr)
         in_path = _prefix_login_path(in_path)
-        out_file = open(out_path, "wb")
-        try:
-            payload = 'fetch(%r, %r)\n' % (in_path, BUFSIZE)
-            self._transport.stdin.write(payload.encode("utf-8"))
-            self._transport.stdin.flush()
-            while True:
-                chunk_len = self._transport.stdout.readline(16)
-                try:
-                    chunk_len = int(chunk_len)
-                except Exception:
-                    if chunk_len == "N\n":
-                        exc = decode_exception(self._transport.stdin)
-                        raise exc
-                    else:
-                        self._abort_transport()
-                        raise errors.AnsibleError("chunk size from remote end is unexpected: %r" % chunk_len)
-                if chunk_len > BUFSIZE or chunk_len < 0:
-                    raise errors.AnsibleError("chunk size from remote end is invalid: %r" % chunk_len)
-                if chunk_len == 0:
-                    break
-                chunk = self._transport.stdout.read(chunk_len)
-                if len(chunk) != chunk_len:
-                    raise errors.AnsibleError("stderr size from remote end does not match actual stderr length: %s != %s" % (chunk_len, len(chunk)))
-                out_file.write(chunk)
-        except Exception:
-            self._abort_transport()
-            raise
+        with open(out_path, "wb") as out_file:
+            try:
+                payload = 'fetch(%r, %r)\n' % (in_path, BUFSIZE)
+                self._transport.stdin.write(payload.encode("utf-8"))
+                self._transport.stdin.flush()
+                while True:
+                    chunk_len = self._transport.stdout.readline(16)
+                    try:
+                        chunk_len = int(chunk_len)
+                    except Exception:
+                        if chunk_len == "N\n":
+                            exc = decode_exception(self._transport.stdin)
+                            raise exc
+                        else:
+                            self._abort_transport()
+                            raise errors.AnsibleError("chunk size from remote end is unexpected: %r" % chunk_len)
+                    if chunk_len > BUFSIZE or chunk_len < 0:
+                        raise errors.AnsibleError("chunk size from remote end is invalid: %r" % chunk_len)
+                    if chunk_len == 0:
+                        break
+                    chunk = self._transport.stdout.read(chunk_len)
+                    if len(chunk) != chunk_len:
+                        raise errors.AnsibleError("stderr size from remote end does not match actual stderr length: %s != %s" % (chunk_len, len(chunk)))
+                    out_file.write(chunk)
+            except Exception:
+                self._abort_transport()
+                raise
