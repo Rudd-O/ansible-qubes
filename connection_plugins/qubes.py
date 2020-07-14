@@ -129,38 +129,39 @@ def popen(cmd, in_data, outf=sys.stdout):
 def put(out_path):
     try:
         f = open(out_path, "wb")
-        sys.stdout.write('{}\n'.format('Y').encode('ascii'))
+        sys.stdout.write(b'Y\n')
     except (IOError, OSError) as e:
-        sys.stdout.write('{}\n'.format('N').encode('ascii'))
+        sys.stdout.write(b'N\n')
         encode_exception(e, sys.stdout)
         return
-    try:
-        while True:
-            chunksize = int(sys.stdin.readline(16).decode('ascii'))
-            if chunksize == 0:
-                break
-            chunk = sys.stdin.read(chunksize)
-            try:
-                f.write(chunk)
-                sys.stdout.write('{}\n'.format('Y').encode('ascii'))
-            except (IOError, OSError) as e:
-                sys.stdout.write('{}\n'.format('N').encode('ascii'))
-                encode_exception(e, sys.stdout)
-                return
+    while True:
+        chunksize = int(sys.stdin.readline(16))
+        if chunksize == 0:
+            break
+        chunk = sys.stdin.read(chunksize)
         try:
-            f.flush()
+            f.write(chunk)
+            sys.stdout.write(b'Y\n')
         except (IOError, OSError) as e:
-            sys.stdout.write('{}\n'.format('N').encode('ascii'))
+            sys.stdout.write(b'N\n')
             encode_exception(e, sys.stdout)
-    finally:
+            f.close()
+            return
+    try:
+        f.flush()
+    except (IOError, OSError) as e:
+        sys.stdout.write(b'N\n')
+        encode_exception(e, sys.stdout)
         f.close()
+        return
+    f.close()
 
 
 def fetch(in_path, bufsize):
     try:
         f = open(in_path, "rb")
     except (IOError, OSError) as e:
-        sys.stdout.write('{}\n'.format('N').encode('ascii'))
+        sys.stdout.write(b'N\n')
         encode_exception(e, sys.stdout)
         return
     try:
@@ -168,8 +169,9 @@ def fetch(in_path, bufsize):
             try:
                 data = f.read(bufsize)
             except (IOError, OSError) as e:
-                sys.stdout.write('{}\n'.format('N').encode('ascii'))
+                sys.stdout.write(b'N\n')
                 encode_exception(e, sys.stdout)
+                f.close()
                 return
             sys.stdout.write('{}\n'.format(len(data)).encode('ascii'))
             if len(data) == 0:
@@ -177,8 +179,7 @@ def fetch(in_path, bufsize):
                 break
             sys.stdout.write(data)
             sys.stdout.flush()
-    finally:
-        f.close()
+    f.close()
 
 
 if __name__ == '__main__':
@@ -263,10 +264,10 @@ class Connection(ConnectionBase):
             self.transport_cmd = kwargs['transport_cmd']
             return
         self.transport_cmd = distutils.spawn.find_executable('qrun')
+        self.transport_cmd = None
         if not self.transport_cmd:
             self.transport_cmd = os.path.join(
                 os.path.dirname(__file__),
-                os.path.pardir,
                 os.path.pardir,
                 "bin",
                 "qrun",
@@ -296,7 +297,7 @@ class Connection(ConnectionBase):
         if not self._connected:
             remote_cmd = [to_bytes(x, errors='surrogate_or_strict') for x in [
                 # 'strace', '-s', '2048', '-o', '/tmp/log',
-                 'python', '-i', '-c', preamble
+                 'python', '-u', '-i', '-c', preamble
             ]]
             addr = self._play_context.remote_addr
             proxy = to_bytes(self.get_option("management_proxy")) if self.get_option("management_proxy") else ""

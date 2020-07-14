@@ -88,7 +88,7 @@ class LoggingEmu():
                 string = a[0]
             else:
                 string = a[0] % a[1:]
-            syslog.syslog(prio, ("%.3f  " % deltat) +  string)
+            syslog.syslog(prio, ("%.3f  " % deltat) + threading.currentThread().getName() + ": " + string)
         finally:
             debug_lock.release()
 logging = None
