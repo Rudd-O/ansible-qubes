@@ -171,7 +171,6 @@ def fetch(in_path, bufsize):
             except (IOError, OSError) as e:
                 sys.stdout.write(b'N\n')
                 encode_exception(e, sys.stdout)
-                f.close()
                 return
             sys.stdout.write('{}\n'.format(len(data)).encode('ascii'))
             if len(data) == 0:
@@ -179,7 +178,8 @@ def fetch(in_path, bufsize):
                 break
             sys.stdout.write(data)
             sys.stdout.flush()
-    f.close()
+    finally:
+        f.close()
 
 
 if __name__ == '__main__':
