@@ -264,7 +264,6 @@ class Connection(ConnectionBase):
             self.transport_cmd = kwargs['transport_cmd']
             return
         self.transport_cmd = distutils.spawn.find_executable('qrun')
-        self.transport_cmd = None
         if not self.transport_cmd:
             self.transport_cmd = os.path.join(
                 os.path.dirname(__file__),
