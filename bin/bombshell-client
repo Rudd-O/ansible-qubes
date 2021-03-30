@@ -193,8 +193,6 @@ def write(dst, buffer, l):
     while len(mv):
         dst.write(mv)
         writtenthisloop = len(mv)
-        #logging.debug("write: Sent %s bytes to sink %s", writtenthisloop, dst)
-        #logging.debug("write: %s", mv[:writtenthisloop].tobytes())
         if writtenthisloop is None or writtenthisloop < 1:
             raise Exception("copy: Failed to write any bytes")
         mv = mv[writtenthisloop:]
@@ -240,8 +238,6 @@ class DataMultiplexer(MyThread):
           self.sink.write(header)
           continue
         l = readthisloop
-        #logging.debug("mux: Received %s bytes from source %s", l, n)
-        #logging.debug("mux: %s", buffer[:l])
         header = struct.pack(PACKFORMAT, n, True, l)
         self.sink.write(header)
         write(self.sink, buffer, l)
