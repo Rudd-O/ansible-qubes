@@ -289,10 +289,6 @@ class Connection(ConnectionBase):
         '''
         display.vvv("CONNECTING %s %s %s" % (os.getppid(), id(self), self.get_option("management_proxy")), host=self._play_context.remote_addr)
         super(Connection, self)._connect()
-        #if self._play_context.remote_addr == 'ring2-buildserver':
-        #    assert 0, dir(self)
-        #    assert 0, self._play_context.serialize()
-        #    assert 0, [x for x in dir(self._play_context) if callable(getattr(self._play_context, x))]
         if not self._connected:
             remote_cmd = [to_bytes(x, errors='surrogate_or_strict') for x in [
                 # 'strace', '-s', '2048', '-o', '/tmp/log',
