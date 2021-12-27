@@ -63,7 +63,7 @@ class x(object):
 display = x()
 
 
-BUFSIZE = 1024*1024
+BUFSIZE = 128*1024  # any bigger and it causes issues because we don't read multiple chunks until completion
 CONNECTION_TRANSPORT = "qubes"
 CONNECTION_OPTIONS = {
     'management_proxy': '--management-proxy',
@@ -135,10 +135,14 @@ def put(out_path):
         encode_exception(e, sys.stdout)
         return
     while True:
-        chunksize = int(sys.stdin.readline(16))
+        #print("reading chunk size", file=sys.stderr)
+        chunksize = sys.stdin.readline(16)
+        #print("read chunk size %s" % chunksize, file=sys.stderr)
+        chunksize = int(chunksize)
         if chunksize == 0:
             break
         chunk = sys.stdin.read(chunksize)
+        assert len(chunk) == chunksize, (len(chunk), chunksize)
         try:
             f.write(chunk)
             sys.stdout.write(b'Y\n')
