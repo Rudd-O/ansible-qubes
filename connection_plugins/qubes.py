@@ -175,6 +175,7 @@ def fetch(in_path, bufsize):
             except (IOError, OSError) as e:
                 sys.stdout.write(b'N\n')
                 encode_exception(e, sys.stdout)
+                f.close()
                 return
             sys.stdout.write('{}\n'.format(len(data)).encode('ascii'))
             if len(data) == 0:
@@ -182,8 +183,7 @@ def fetch(in_path, bufsize):
                 break
             sys.stdout.write(data)
             sys.stdout.flush()
-    finally:
-        f.close()
+    f.close()
 
 
 if __name__ == '__main__':
@@ -268,6 +268,7 @@ class Connection(ConnectionBase):
             self.transport_cmd = kwargs['transport_cmd']
             return
         self.transport_cmd = distutils.spawn.find_executable('qrun')
+        self.transport_cmd = None
         if not self.transport_cmd:
             self.transport_cmd = os.path.join(
                 os.path.dirname(__file__),
