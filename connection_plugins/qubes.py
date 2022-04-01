@@ -63,7 +63,7 @@ class x(object):
 display = x()
 
 
-BUFSIZE = 1024*1024
+BUFSIZE = 128*1024  # any bigger and it causes issues because we don't read multiple chunks until completion
 CONNECTION_TRANSPORT = "qubes"
 CONNECTION_OPTIONS = {
     'management_proxy': '--management-proxy',
@@ -139,6 +139,7 @@ def put(out_path):
         if chunksize == 0:
             break
         chunk = sys.stdin.read(chunksize)
+        assert len(chunk) == chunksize, ("Mismatch in chunk length", len(chunk), chunksize)
         try:
             f.write(chunk)
             sys.stdout.write(b'Y\n')
@@ -152,9 +153,9 @@ def put(out_path):
     except (IOError, OSError) as e:
         sys.stdout.write(b'N\n')
         encode_exception(e, sys.stdout)
-        f.close()
         return
-    f.close()
+    finally:
+        f.close()
 
 
 def fetch(in_path, bufsize):
@@ -179,7 +180,8 @@ def fetch(in_path, bufsize):
                 break
             sys.stdout.write(data)
             sys.stdout.flush()
-    f.close()
+    finally:
+        f.close()
 
 
 if __name__ == '__main__':
@@ -290,10 +292,6 @@ class Connection(ConnectionBase):
         '''
         display.vvv("CONNECTING %s %s %s" % (os.getppid(), id(self), self.get_option("management_proxy")), host=self._play_context.remote_addr)
         super(Connection, self)._connect()
-        #if self._play_context.remote_addr == 'ring2-buildserver':
-        #    assert 0, dir(self)
-        #    assert 0, self._play_context.serialize()
-        #    assert 0, [x for x in dir(self._play_context) if callable(getattr(self._play_context, x))]
         if not self._connected:
             remote_cmd = [to_bytes(x, errors='surrogate_or_strict') for x in [
                 # 'strace', '-s', '2048', '-o', '/tmp/log',
