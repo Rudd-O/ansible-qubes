@@ -183,7 +183,8 @@ def fetch(in_path, bufsize):
                 break
             sys.stdout.write(data)
             sys.stdout.flush()
-    f.close()
+    finally:
+        f.close()
 
 
 if __name__ == '__main__':
