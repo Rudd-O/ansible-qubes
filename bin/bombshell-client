@@ -88,7 +88,7 @@ class LoggingEmu():
                 string = a[0]
             else:
                 string = a[0] % a[1:]
-            syslog.syslog(prio, ("%.3f  " % deltat) + threading.currentThread().getName() + ": " + string)
+            syslog.syslog(prio, ("%.3f  " % deltat) + threading.current_thread().name + ": " + string)
         finally:
             debug_lock.release()
 logging = None
@@ -128,10 +128,10 @@ class MyThread(threading.Thread):
     try:
         self._run()
     except Exception as e:
-        logging.error("%s: unexpected exception", threading.currentThread())
+        logging.error("%s: unexpected exception", threading.current_thread().name)
         tb = traceback.format_exc()
-        logging.error("%s: traceback: %s", threading.currentThread(), tb)
-        logging.error("%s: exiting program", threading.currentThread())
+        logging.error("%s: traceback: %s", threading.current_thread().name, tb)
+        logging.error("%s: exiting program", threading.current_thread().name)
         os._exit(124)
 
 
@@ -140,7 +140,7 @@ class SignalSender(MyThread):
   def __init__(self, signals, sigqueue):
     """Handles signals by pushing them into a file-like object."""
     threading.Thread.__init__(self)
-    self.setDaemon(True)
+    self.daemon = True
     self.queue = queue.Queue()
     self.sigqueue = sigqueue
     for sig in signals:
@@ -167,7 +167,7 @@ class Signaler(MyThread):
   def __init__(self, process, sigqueue):
     """Reads integers from a file-like object and relays that as kill()."""
     threading.Thread.__init__(self)
-    self.setDaemon(True)
+    self.daemon = True
     self.process = process
     self.sigqueue = sigqueue
 
@@ -217,7 +217,7 @@ class DataMultiplexer(MyThread):
 
   def __init__(self, sources, sink):
     threading.Thread.__init__(self)
-    self.setDaemon(True)
+    self.daemon = True
     self.sources = dict((s,num) for num, s in enumerate(sources))
     self.sink = sink
 
@@ -248,7 +248,7 @@ class DataDemultiplexer(MyThread):
 
   def __init__(self, source, sinks):
     threading.Thread.__init__(self)
-    self.setDaemon(True)
+    self.daemon = True
     self.sinks = dict(enumerate(sinks))
     self.source = source
 
@@ -341,15 +341,15 @@ def main_master():
   )
   read_signals, write_signals = pairofpipes()
   signaler = SignalSender(handled_signals, write_signals)
-  signaler.setName("master signaler")
+  signaler.name = "master signaler"
   signaler.start()
 
   muxer = DataMultiplexer([sys.stdin, read_signals], p.stdin)
-  muxer.setName("master multiplexer")
+  muxer.name = "master multiplexer"
   muxer.start()
 
   demuxer = DataDemultiplexer(p.stdout, [sys.stdout, saved_stderr])
-  demuxer.setName("master demultiplexer")
+  demuxer.name = "master demultiplexer"
   demuxer.start()
 
   retval = p.wait()
@@ -406,15 +406,15 @@ def main_remote():
   signals_read, signals_written = pairofpipes()
 
   signaler = Signaler(p, signals_read)
-  signaler.setName("remote signaler")
+  signaler.name = "remote signaler"
   signaler.start()
 
   demuxer = DataDemultiplexer(sys.stdin, [p.stdin, signals_written])
-  demuxer.setName("remote demultiplexer")
+  demuxer.name = "remote demultiplexer"
   demuxer.start()
 
   muxer = DataMultiplexer([p.stdout, p.stderr], sys.stdout)
-  muxer.setName("remote multiplexer")
+  muxer.name = "remote multiplexer"
   muxer.start()
 
   logging.info("Started %s", nicecmd)
