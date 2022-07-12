@@ -32,6 +32,15 @@ PACKLEN = 8
 PACKFORMAT = "!HbIx"
 
 
+def set_proc_name(newname):
+    from ctypes import cdll, byref, create_string_buffer
+
+    libc = cdll.LoadLibrary("libc.so.6")
+    buff = create_string_buffer(len(newname) + 1)
+    buff.value = newname
+    libc.prctl(15, byref(buff), 0, 0, 0)
+
+
 @contextlib.contextmanager
 def mutexfile(filepath):
     oldumask = os.umask(0o077)
@@ -320,6 +329,12 @@ class DataDemultiplexer(MyThread):
 
 
 def main_master():
+    set_proc_name(
+        "bombshell-client (master) %s"
+        % " ".join(
+            quote(x for x in sys.argv[1:]),
+        )
+    )
     global logging
     logging = LoggingEmu("master")
 
@@ -413,6 +428,12 @@ def pairofpipes():
 
 
 def main_remote():
+    set_proc_name(
+        "bombshell-client (remote) %s"
+        % " ".join(
+            quote(x for x in sys.argv[1:]),
+        )
+    )
     global logging
     logging = LoggingEmu("remote")
 
