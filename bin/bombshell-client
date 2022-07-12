@@ -333,9 +333,7 @@ def quotedargs():
 
 
 def main_master():
-    set_proc_name(
-        "bombshell-client (master) %s" % quotedargs())
-    )
+    set_proc_name("bombshell-client (master) %s" % quotedargs())
     global logging
     logging = LoggingEmu("master")
 
@@ -429,9 +427,7 @@ def pairofpipes():
 
 
 def main_remote():
-    set_proc_name(
-        "bombshell-client (remote) %s" % quotedargs()
-    )
+    set_proc_name("bombshell-client (remote) %s" % quotedargs())
     global logging
     logging = LoggingEmu("remote")
 
