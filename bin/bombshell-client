@@ -328,12 +328,13 @@ class DataDemultiplexer(MyThread):
         logging.debug("demux: End of data demultiplexer")
 
 
+def quotedargs():
+    return " ".join(quote(x) for x in sys.argv[1:])
+
+
 def main_master():
     set_proc_name(
-        "bombshell-client (master) %s"
-        % " ".join(
-            quote(x for x in sys.argv[1:]),
-        )
+        "bombshell-client (master) %s" % quotedargs())
     )
     global logging
     logging = LoggingEmu("master")
@@ -429,10 +430,7 @@ def pairofpipes():
 
 def main_remote():
     set_proc_name(
-        "bombshell-client (remote) %s"
-        % " ".join(
-            quote(x for x in sys.argv[1:]),
-        )
+        "bombshell-client (remote) %s" % quotedargs()
     )
     global logging
     logging = LoggingEmu("remote")
