@@ -308,7 +308,7 @@ class DataDemultiplexer(MyThread):
             assert not x, x
             for s in r:
                 header = s.read(PACKLEN)
-                if header == "":
+                if header == b"":
                     logging.debug(
                         "demux: Received no bytes from source, closing sinks",
                     )
