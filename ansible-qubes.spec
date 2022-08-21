@@ -3,7 +3,7 @@
 %define mybuildnumber %{?build_number}%{?!build_number:1}
 
 Name:           ansible-qubes
-Version:        0.0.11
+Version:        0.0.12
 Release:        %{mybuildnumber}%{?dist}
 Summary:        Inter-VM program execution for Qubes OS AppVMs and StandaloneVMs
 BuildArch:      noarch
