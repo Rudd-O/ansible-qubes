@@ -138,16 +138,20 @@ def put(out_path):
         chunksize = int(sys.stdin.readline(16))
         if chunksize == 0:
             break
-        chunk = sys.stdin.read(chunksize)
-        assert len(chunk) == chunksize, ("Mismatch in chunk length", len(chunk), chunksize)
-        try:
-            f.write(chunk)
-            sys.stdout.write(b'Y\n')
-        except (IOError, OSError) as e:
-            sys.stdout.write(b'N\n')
-            encode_exception(e, sys.stdout)
-            f.close()
-            return
+        while True:
+            chunk = sys.stdin.read(chunksize)
+            if chunk == b"":
+                assert chunksize == 0, "Never could finish reading the last %s bytes" % chunksize
+                break
+            try:
+                f.write(chunk)
+            except (IOError, OSError) as e:
+                sys.stdout.write(b'N\n')
+                encode_exception(e, sys.stdout)
+                f.close()
+                return
+            chunksize = chunksize - len(chunk)
+        sys.stdout.write(b'Y\n')
     try:
         f.flush()
     except (IOError, OSError) as e:
