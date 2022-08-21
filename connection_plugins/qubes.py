@@ -255,7 +255,7 @@ class Connection(ConnectionBase):
     def set_options(self, task_keys=None, var_options=None, direct=None):
         super(Connection, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
         # FIXME HORRIBLE WORKAROUND FIXME
-        if task_keys['delegate_to'] and 'management_proxy' in self._options:
+        if task_keys and task_keys['delegate_to'] and self._options and 'management_proxy' in self._options:
             self._options['management_proxy'] = ''
 
     def __init__(self, play_context, new_stdin, *args, **kwargs):
