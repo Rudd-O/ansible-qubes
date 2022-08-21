@@ -89,7 +89,7 @@ Enabling bombshell-client access to dom0
 ----------------------------------------
 
 `dom0` needs its `qubes.VMShell` service activated.  As `root` in `dom0`,
-create a file `/etc/qubes-rpc/qubes.VMshell` with mode `0644` and make
+create a file `/etc/qubes-rpc/qubes.VMshell` with mode `0755` and make
 sure its contents say `/bin/bash`.
 
 You will then create a file `/etc/qubes-rpc/policy/qubes.VMShell` with
