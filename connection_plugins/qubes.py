@@ -63,14 +63,20 @@ class x(object):
 display = x()
 
 
-BUFSIZE = 128*1024  # any bigger and it causes issues because we don't read multiple chunks until completion
+BUFSIZE = 64*1024  # any bigger and it causes issues because we don't read multiple chunks until completion
 CONNECTION_TRANSPORT = "qubes"
 CONNECTION_OPTIONS = {
     'management_proxy': '--management-proxy',
 }
 
 
+def debug(text):
+    return
+    print(text, file=sys.stderr)
+
+
 def encode_exception(exc, stream):
+    debug("encoding exception")
     stream.write('{}\n'.format(len(exc.__class__.__name__)).encode('ascii'))
     stream.write('{}'.format(exc.__class__.__name__).encode('ascii'))
     for attr in "errno", "filename", "message", "strerror":
@@ -79,6 +85,7 @@ def encode_exception(exc, stream):
 
 
 def decode_exception(stream):
+    debug("decoding exception")
     name_len = stream.readline(16)
     name_len = int(name_len)
     name = stream.read(name_len)
@@ -107,6 +114,7 @@ def decode_exception(stream):
 
 
 def popen(cmd, in_data, outf=sys.stdout):
+    debug("popening on remote %s" % type(in_data))
     try:
         p = subprocess.Popen(
             cmd, shell=False, stdin=subprocess.PIPE,
@@ -124,9 +132,11 @@ def popen(cmd, in_data, outf=sys.stdout):
     outf.write('{}\n'.format(len(err)).encode('ascii'))
     outf.write(err)
     outf.flush()
+    debug("finished popening")
 
 
 def put(out_path):
+    debug("dest writing %s" % out_path)
     try:
         f = open(out_path, "wb")
         sys.stdout.write(b'Y\n')
@@ -136,18 +146,25 @@ def put(out_path):
         return
     while True:
         chunksize = int(sys.stdin.readline(16))
-        if chunksize == 0:
+        if not chunksize:
+            debug("looks like we have no more to read")
             break
-        chunk = sys.stdin.read(chunksize)
-        assert len(chunk) == chunksize, ("Mismatch in chunk length", len(chunk), chunksize)
-        try:
-            f.write(chunk)
-            sys.stdout.write(b'Y\n')
-        except (IOError, OSError) as e:
-            sys.stdout.write(b'N\n')
-            encode_exception(e, sys.stdout)
-            f.close()
-            return
+        while chunksize:
+            debug(type(chunksize))
+            chunk = sys.stdin.read(chunksize)
+            assert chunk
+            debug("dest writing %s" % len(chunk))
+            try:
+                f.write(chunk)
+            except (IOError, OSError) as e:
+                sys.stdout.write(b'N\n')
+                encode_exception(e, sys.stdout)
+                f.close()
+                return
+            chunksize = chunksize - len(chunk)
+            debug("remaining %s" % chunksize)
+        sys.stdout.write(b'Y\n')
+        sys.stdout.flush()
     try:
         f.flush()
     except (IOError, OSError) as e:
@@ -155,10 +172,12 @@ def put(out_path):
         encode_exception(e, sys.stdout)
         return
     finally:
+        debug("finished writing dest")
         f.close()
 
 
 def fetch(in_path, bufsize):
+    debug("Fetching from remote %s" % in_path)
     try:
         f = open(in_path, "rb")
     except (IOError, OSError) as e:
@@ -206,7 +225,7 @@ sys.stdout = sys.stdout.buffer if hasattr(sys.stdout, 'buffer') else sys.stdout
 '''
 payload = b'\n\n'.join(
     inspect.getsource(x).encode("utf-8")
-    for x in (encode_exception, popen, put, fetch)
+    for x in (debug, encode_exception, popen, put, fetch)
 ) + \
 b'''
 
@@ -356,16 +375,18 @@ class Connection(ConnectionBase):
             cmd = shlex.split(cmd)
         display.vvvv("EXEC %s" % cmd, host=self._play_context.remote_addr)
         try:
-            payload = ('popen(%r, %r)\n' % (cmd, in_data)).encode("utf-8")
+            payload = ('popen(%r, %r)\n\n' % (cmd, in_data)).encode("utf-8")
             self._transport.stdin.write(payload)
             self._transport.stdin.flush()
             yesno = self._transport.stdout.readline(2)
+            debug("Reading yesno")
         except Exception:
             self._abort_transport()
             raise
         if yesno == "Y\n" or yesno == b"Y\n":
             try:
                 retcode = self._transport.stdout.readline(16)
+                debug("Reading retcode")
                 try:
                     retcode = int(retcode)
                 except Exception:
@@ -402,6 +423,7 @@ class Connection(ConnectionBase):
         else:
             self._abort_transport()
             raise errors.AnsibleError("pass/fail from remote end is unexpected: %r" % yesno)
+        debug("finished popening on master")
 
     def put_file(self, in_path, out_path):
         '''Transfer a file from local to VM.'''
@@ -423,6 +445,7 @@ class Connection(ConnectionBase):
         with open(in_path, 'rb') as in_file:
             while True:
                 chunk = in_file.read(BUFSIZE)
+                debug("source writing %s bytes" % len(chunk))
                 try:
                     self._transport.stdin.write(("%s\n" % len(chunk)).encode("utf-8"))
                     self._transport.stdin.flush()
@@ -442,9 +465,15 @@ class Connection(ConnectionBase):
                 else:
                     self._abort_transport()
                     raise errors.AnsibleError("pass/fail from remote end is unexpected: %r" % yesno)
+                debug("on this side it's all good")
+
+        self._transport.stdin.write(("%s\n" % 0).encode("utf-8"))
+        self._transport.stdin.flush()
+        debug("finished writing source")
 
     def fetch_file(self, in_path, out_path):
         '''Fetch a file from VM to local.'''
+        debug("fetching to local")
         super(Connection, self).fetch_file(in_path, out_path)
         display.vvvv("FETCH %s to %s" % (in_path, out_path), host=self._play_context.remote_addr)
         in_path = _prefix_login_path(in_path)
