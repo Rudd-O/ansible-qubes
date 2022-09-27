@@ -352,7 +352,7 @@ def main_master():
     assert remote_command
 
     def anypython(exe):
-        return "` test -x %s && echo %s || echo python`" % (
+        return "` test -x %s && echo %s || echo python3`" % (
             quote(exe),
             quote(exe),
         )
