@@ -313,7 +313,7 @@ class Connection(ConnectionBase):
         if not self._connected:
             remote_cmd = [to_bytes(x, errors='surrogate_or_strict') for x in [
                 # 'strace', '-s', '2048', '-o', '/tmp/log',
-                 'python', '-u', '-i', '-c', preamble
+                 'python3', '-u', '-i', '-c', preamble
             ]]
             addr = self._play_context.remote_addr
             proxy = to_bytes(self.get_option("management_proxy")) if self.get_option("management_proxy") else ""

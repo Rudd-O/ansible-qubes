@@ -96,6 +96,8 @@ def inject_qubes(inject):
             pass
         elif vmtype == "ProxyVM":
             add(flags, "proxy")
+        elif vmtype == "DispVM":
+            pass
         elif vmtype == "TemplateVM":
             try:
                 qubes["source"] = qubes["template"]

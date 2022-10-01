@@ -99,7 +99,7 @@ class ActionModule(template):
         qubesdata = commonlib.inject_qubes(task_vars)
         task_vars["vms"] = generate_datastructure(qubesdata, task_vars)
         with tempfile.NamedTemporaryFile() as x:
-            x.write(contents)
+            x.write(contents.encode())
             x.flush()
             self._task.args['src'] = x.name
             retval = template.run(self, tmp, task_vars)
@@ -107,7 +107,7 @@ class ActionModule(template):
                 return retval
     
             with tempfile.NamedTemporaryFile() as y:
-                y.write(topcontents)
+                y.write(topcontents.encode())
                 y.flush()
 
                 # Create new tmp path -- the other was blown away.
