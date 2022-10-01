@@ -97,7 +97,6 @@ class ActionModule(template):
 
     def run(self, tmp=None, task_vars=None):
         qubesdata = commonlib.inject_qubes(task_vars)
-        print(task_vars)
         task_vars["vms"] = generate_datastructure(qubesdata, task_vars)
         with tempfile.NamedTemporaryFile() as x:
             x.write(contents.encode())
