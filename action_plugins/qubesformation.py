@@ -23,8 +23,6 @@ def generate_datastructure(vms, task_vars):
         if hasattr(task_vars, 'vms'):
             if n not in task_vars['vms']:
                 continue
-            fi
-        fi
         
         qubes = data['qubes']
         d[task_vars['hostvars'][n]['inventory_hostname_short']] = dc(qvm=['vm'])
