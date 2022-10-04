@@ -17,6 +17,15 @@ def generate_datastructure(vms, task_vars):
     dc = collections.OrderedDict
     d = dc()
     for n, data in vms.items():
+        # This block will skip any VMs that are not in the 'vms' variable
+        # This allows you to deploy in multiple stages which is useful in cases
+        # where you want to create a template after another template is already provisioned.
+        if hasattr(task_vars, 'vms'):
+            if n not in task_vars['vms']:
+                continue
+            fi
+        fi
+        
         qubes = data['qubes']
         d[task_vars['hostvars'][n]['inventory_hostname_short']] = dc(qvm=['vm'])
         vm = d[task_vars['hostvars'][n]['inventory_hostname_short']]
