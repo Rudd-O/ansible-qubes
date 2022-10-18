@@ -21,9 +21,12 @@ def generate_datastructure(vms, task_vars):
         # This allows you to deploy in multiple stages which is useful in cases
         # where you want to create a template after another template is already provisioned.
         if hasattr(task_vars, 'formation_vm_groups'):
+            continueLoop = true
             for group in task_vars['formation_vm_groups']:
-                if n not in task_vars.groups[group]:
-                    continue
+                if n in task_vars.groups[group]:
+                    continueLoop = false
+            if continueLoop:
+                continue
         
         qubes = data['qubes']
         d[task_vars['hostvars'][n]['inventory_hostname_short']] = dc(qvm=['vm'])
