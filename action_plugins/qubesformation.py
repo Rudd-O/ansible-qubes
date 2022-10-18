@@ -17,12 +17,17 @@ def generate_datastructure(vms, task_vars):
     dc = collections.OrderedDict
     d = dc()
     for n, data in vms.items():
+        print(n)
         # This block will skip any VMs that are not in the groups defined in the 'formation_vm_groups' variable
         # This allows you to deploy in multiple stages which is useful in cases
         # where you want to create a template after another template is already provisioned.
         if hasattr(task_vars, 'formation_vm_groups'):
             continueLoop = true
+            print("formation")
+            print(task_vars['formation_vm_groups'])
             for group in task_vars['formation_vm_groups']:
+                print("group vars")
+                print(task_vars.groups[group])
                 if n in task_vars.groups[group]:
                     continueLoop = false
             if continueLoop:
