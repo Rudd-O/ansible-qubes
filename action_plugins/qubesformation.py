@@ -22,8 +22,8 @@ def generate_datastructure(vms, task_vars):
         # This block will skip any VMs that are not in the groups defined in the 'formation_vm_groups' variable
         # This allows you to deploy in multiple stages which is useful in cases
         # where you want to create a template after another template is already provisioned.
-        print(json.dumps(task_vars))
-        print(task_vars.ansible_facts.formation_vm_groups)
+        print(json.dumps(task_vars, default=vars))
+        print(task_vars.ansible_facts.)
         if hasattr(task_vars.ansible_facts, 'formation_vm_groups'):
             continueLoop = true
             print("formation")
