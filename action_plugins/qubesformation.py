@@ -23,11 +23,13 @@ def generate_datastructure(vms, task_vars):
         # This allows you to deploy in multiple stages which is useful in cases
         # where you want to create a template after another template is already provisioned.
         print(json.dumps(task_vars, default=vars))
-        print(task_vars.ansible_facts.)
+        print(task_vars.ansible_facts)
         if hasattr(task_vars.ansible_facts, 'formation_vm_groups'):
             continueLoop = true
             print("formation")
             print(task_vars.ansible_facts['formation_vm_groups'])
+            print("hostvars")
+            print(task_vars['hostvars'][n])
             for group in task_vars.ansible_facts['formation_vm_groups']:
                 print("group vars")
                 print(task_vars.ansible_facts.groups[group])
