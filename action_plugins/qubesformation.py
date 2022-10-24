@@ -8,15 +8,24 @@ from ansible.plugins.action.template import ActionModule as template
 sys.path.insert(0, os.path.dirname(__file__))
 import commonlib
 
-
 contents = """{{ vms | to_nice_yaml }}"""
 topcontents = "{{ saltenv }}:\n  '*':\n  - {{ recipename }}\n"
-
 
 def generate_datastructure(vms, task_vars):
     dc = collections.OrderedDict
     d = dc()
     for n, data in vms.items():
+        # This block will skip any VMs that are not in the groups defined in the 'formation_vm_groups' variable
+        # This allows you to deploy in multiple stages which is useful in cases
+        # where you want to create a template after another template is already provisioned.
+        if 'formation_vm_groups' in task_vars:
+            continueLoop = True
+            for group in task_vars['formation_vm_groups']:
+                if n in task_vars['hostvars'][n]['groups'][group]:
+                    continueLoop = False
+            if continueLoop:
+                continue
+        
         qubes = data['qubes']
         d[task_vars['hostvars'][n]['inventory_hostname_short']] = dc(qvm=['vm'])
         vm = d[task_vars['hostvars'][n]['inventory_hostname_short']]
@@ -89,7 +98,6 @@ def generate_datastructure(vms, task_vars):
             qvm.append({'require': require})
 
     return d
-
 
 class ActionModule(template):
 
