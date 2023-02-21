@@ -2,7 +2,6 @@
 
 import base64
 import pickle
-import contextlib
 import errno
 import fcntl
 import os
@@ -41,18 +40,6 @@ def set_proc_name(newname):
     buff = create_string_buffer(len(newname) + 1)
     buff.value = newname
     libc.prctl(15, byref(buff), 0, 0, 0)
-
-
-@contextlib.contextmanager
-def mutexfile(filepath):
-    oldumask = os.umask(0o077)
-    try:
-        f = open(filepath, "a")
-    finally:
-        os.umask(oldumask)
-    fcntl.lockf(f.fileno(), fcntl.LOCK_EX)
-    yield
-    f.close()
 
 
 def unset_cloexec(fd):
@@ -370,28 +357,27 @@ def main_master():
 
     saved_stderr = openfdforappend(os.dup(sys.stderr.fileno()))
 
-    with mutexfile(os.path.expanduser("~/.bombshell-lock")):
-        try:
-            p = subprocess.Popen(
-                ["qrexec-client-vm", remote_vm, "qubes.VMShell"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                close_fds=True,
-                preexec_fn=os.setpgrp,
-                bufsize=0,
-            )
-        except OSError as e:
-            logging.error("cannot launch qrexec-client-vm: %s", e)
-            return 127
+    try:
+        p = subprocess.Popen(
+            ["qrexec-client-vm", remote_vm, "qubes.VMShell"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            close_fds=True,
+            preexec_fn=os.setpgrp,
+            bufsize=0,
+        )
+    except OSError as e:
+        logging.error("cannot launch qrexec-client-vm: %s", e)
+        return 127
 
-        logging.debug("Writing the helper text into the other side")
-        p.stdin.write(remote_helper_text)
-        p.stdin.flush()
+    logging.debug("Writing the helper text into the other side")
+    p.stdin.write(remote_helper_text)
+    p.stdin.flush()
 
-        confirmation, errmsg = recv_confirmation(p.stdout)
-        if confirmation != 0:
-            logging.error("remote: %s", errmsg)
-            return confirmation
+    confirmation, errmsg = recv_confirmation(p.stdout)
+    if confirmation != 0:
+        logging.error("remote: %s", errmsg)
+        return confirmation
 
     handled_signals = (
         signal.SIGINT,
