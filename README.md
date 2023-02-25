@@ -92,18 +92,18 @@ Enabling bombshell-client access to dom0
 create a file `/etc/qubes-rpc/qubes.VMshell` with mode `0755` and make
 sure its contents say `/bin/bash`.
 
-You will then create a file `/etc/qubes-rpc/policy/qubes.VMShell` with
-mode 0664, owned by your login user, and group `qubes`.  Add a policy
+You will then create a file `/etc/qubes/policy.d/80-ansible-qubes.policy`
+with mode 0664, owned by `root` and group `qubes`.  Add a policy
 line towards the top of the file:
 
 ```
-yourvm dom0 ask
+qubes.VMShell           *           controller          *     allow
 ```
 
-Where `yourvm` represents the name of the VM you will be executing
-`bombshell-client` against dom0 from.
+Where `controller` represents the name of the VM you will be executing
+`bombshell-client` against `dom0` from.
 
-That's it -- `bombshell-client` should work against dom0 now.  Of course,
+That's it -- `bombshell-client` should work against `dom0` now.  Of course,
 you can adjust the policy to have it not ask — do the security math
 on what that implies.
 

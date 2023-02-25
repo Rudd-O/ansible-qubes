@@ -24,13 +24,13 @@ Integrate this software into your Ansible setup (within your `managevm`) VM) by:
 
 ## Set up the policy file for `qubes.VMShell`
 
-Edit (as `root`) the file `/etc/qubes-rpc/policy/qubes.VMShell`
+Edit (as `root`) the file `/etc/qubes/policy.d/80-ansible-qubes.policy`
 located on the file system of your `dom0`.
 
 At the top of the file, add the following two lines:
 
 ```
-managevm $anyvm allow
+qubes.VMShell    *    managevm     *      allow
 ```
 
 This first line lets `managevm` execute any commands on any VM on your
@@ -41,25 +41,21 @@ security prompt to allow `qubes.VMShell` on the target VM you're managing.
 
 Now save that file, and exit your editor.
 
+If your dom0 has a file `/etc/qubes-rpc/policy/qubes.VMShell`,
+you can delete it now.  It is obsolete.
+
 ### Optional: allow `managevm` to manage `dom0`
 
-Before the line you added in the previous step, add this line:
-
-```
-managevm dom0 allow
-```
-
-This line lets `managevm` execute any commands in `dom0`.  Be sure you
-understand the security implications of such a thing.
-
-The next step is to add the RPC service proper.  Edit the file
+The next step is to add the RPC service proper to dom0.  Edit the file
 `/etc/qubes-rpc/qubes.VMShell` to have a single line that contains:
 
 ```
 exec bash
 ```
 
-That is it.  `dom0` should work now.
+Make the file executable.
+
+That is it.  `dom0` should work now.  Note you do this at your own risk.
 
 
 ## Test `qrun` works

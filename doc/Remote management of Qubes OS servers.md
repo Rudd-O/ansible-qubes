@@ -13,11 +13,11 @@ to set up a policy that allows us to remotely execute commands on any VM of the 
 network server, without having to be physically present to click any dialogs authorizing
 the execution of those commands.
 
-In `dom0` of your Qubes server, edit `/etc/qubes-rpc/policy/qubes.VMShell` to add,
+In `dom0` of your Qubes server, edit `/etc/qubes/policy.d/80-ansible-qubes.policy` to add,
 at the top of the file, a policy that looks like this:
 
 ```
-exp-manager   $anyvm    allow
+qubes.VMShell    *    managevm     *      allow
 ```
 
 This tells Qubes OS that `exp-manager` is now authorized to run any command in any of the VMs.
@@ -25,13 +25,13 @@ This tells Qubes OS that `exp-manager` is now authorized to run any command in a
 **Security note**: this does mean that anyone with access to `exp-manager` can do
 literally anything on any of your VMs in your Qubes OS server.
 
-If that is not what you want, then replace `$anyvm` with the name of the VMs you would like
-to manage.  For example: if you would like `exp-manager` to be authorized to run commands
-*only* on `exp-net`, then you can use the following policy:
+If that is not what you want, then replace `*` after `managevm` with the name of the VMs you
+would like to manage.  For example: if you would like `exp-manager` to be authorized to run
+commands *only* on `exp-net`, then you can use the following policy:
 
 ```
-exp-manager   exp-net   allow
-exp-manager   $anyvm    deny
+qubes.VMShell    *      exp-manager   exp-net   allow
+qubes.VMShell    *      exp-manager   @anyvm    deny
 ```
 
 Try it out now.  SSH from your manager machine into `exp-manager` and run:
@@ -47,7 +47,7 @@ You should see `yes` followed by `exp-net` on the output side.
 If you expect that you will need to run commands in `dom0` from your manager machine
 (say, to create, stop, start and modify VMs in the Qubes OS server),
 then you will have to create a file `/etc/qubes-rpc/qubes.VMShell` as `root` in `dom0`,
-with the contents `/bin/bash` and permission mode `0644`.  Doing this will enable you
+with the contents `/bin/bash` and permission mode `0755`.  Doing this will enable you
 to run commands on `dom0` which you can subsequently test in `exp-manager` by running command:
 
 ```
@@ -57,7 +57,7 @@ qvm-run dom0 'echo yes ; hostname'
 like you did before.
 
 **Security note**: this does mean that anyone with access to `exp-manager` can do
-literally anything on your Qubes OS server.
+*literally anything* on your Qubes OS server.  You have been warned.
 
 ## Integrate your Ansible setup
 
