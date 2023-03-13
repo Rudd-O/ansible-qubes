@@ -321,12 +321,18 @@ def quotedargs():
     return " ".join(quote(x) for x in sys.argv[1:])
 
 
+def quotedargs_ellipsized(cmdlist):
+    text = " ".join(quote(x for x in sys.argv[1:]))
+    if len(text) > 80:
+        text = text[:77] + "..."
+    return text
+
 def main_master():
     set_proc_name("bombshell-client (master) %s" % quotedargs())
     global logging
     logging = LoggingEmu("master")
 
-    logging.info("Started with arguments: %s", sys.argv[1:])
+    logging.info("Started with arguments: %s", quotedargs_ellipsized(sys.argv[1:]))
 
     global debug_enabled
     args = sys.argv[1:]
@@ -419,7 +425,7 @@ def main_remote():
     global logging
     logging = LoggingEmu("remote")
 
-    logging.info("Started with arguments: %s", sys.argv[1:])
+    logging.info("Started with arguments: %s", quotedargs_ellipsized(sys.argv[1:]))
 
     global debug_enabled
     if "-d" in sys.argv[1:]:
@@ -468,10 +474,11 @@ def main_remote():
     muxer.name = "remote multiplexer"
     muxer.start()
 
-    logging.info("Started %s", nicecmd)
+    nicecmd_ellipsized = quotedargs_ellipsized(cmd)
+    logging.info("Started %s", nicecmd_ellipsized)
 
     retval = p.wait()
-    logging.info("Return code %s for %s", retval, nicecmd)
+    logging.info("Return code %s for %s", retval, nicecmd_ellipsized)
     muxer.join()
     logging.info("Ending bombshell")
     return retval
