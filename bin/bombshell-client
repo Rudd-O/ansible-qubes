@@ -322,7 +322,7 @@ def quotedargs():
 
 
 def quotedargs_ellipsized(cmdlist):
-    text = " ".join(quote(x for x in sys.argv[1:]))
+    text = " ".join(quote(x) for x in sys.argv[1:])
     if len(text) > 80:
         text = text[:77] + "..."
     return text
