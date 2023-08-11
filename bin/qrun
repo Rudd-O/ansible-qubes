@@ -1,9 +1,9 @@
 #!/usr/bin/python3 -u
 
 try:
-    from pipes import quote
-except ImportError:
     from shlex import quote
+except ImportError:
+    from pipes import quote
 import os
 import subprocess
 import sys
