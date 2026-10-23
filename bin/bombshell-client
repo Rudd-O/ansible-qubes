@@ -553,6 +553,23 @@ sys.stdin = openfdforread(sys.stdin.fileno())
 sys.stdout = openfdforappend(sys.stdout.fileno())
 
 
+def _shell_status(status):
+    """THE single status conversion point (spec section 11.2 status
+    note).  A CPython wait status for a process killed by a signal is
+    NEGATIVE (-signum); a raw negative passed to sys.exit would surface
+    as `(-signum) & 0xFF = 256-signum` (247 for SIGKILL, 254 for SIGINT)
+    -- un-decodable by any caller.  Every status path converges on this
+    boundary (section 3.4 flow; section 6.4 exit paths A/B), so convert
+    to the shell convention 128+signum once here, at the exit point:
+    the value the calling shell reports for the very same local kill
+    (130 for SIGINT, 137 for SIGKILL).  Normal statuses pass through
+    unchanged.
+    """
+    if status is None:
+        return 1
+    return 128 - status if status < 0 else status
+
+
 def _main():
     global logging
     try:
@@ -569,4 +586,4 @@ def _main():
         return 1
 
 
-sys.exit(_main())
+sys.exit(_shell_status(_main()))

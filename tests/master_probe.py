@@ -13,11 +13,13 @@ Usage (from anywhere):
     python3 tests/master_probe.py
 
 Status note: a process killed by SIGKILL reports returncode -9 to
-Python; sys.exit(-9) then yields 247 (CPython masks with & 0xFF).
-All-Python chains therefore observe 247 locally, not the shell-style
-137 that spec section 11.2's T9/T10 quote from real-Qubes observations
-(see docs/specs/Threadless algorithm.md section 3.4 / section 6.3 for the
-proxy-propagation analysis).
+Python; the tool converts that, at its single exit boundary
+(_shell_status, spec section 7), to the shell convention 128+9 =
+137.  All-Python chains therefore observe 137 locally -- the same
+value real-Qubes observations quoted in spec section 11.2's T9/T10,
+and the same value the calling shell reports for the identical local
+kill (see docs/specs/Threadless algorithm.md section 3.4 / 6.3 for
+the proxy-propagation analysis).
 """
 import os
 import select as sel
@@ -137,19 +139,19 @@ out, err = harvest(p)
 case("M2 keyboard+Ctrl-D", b"answered-ping\n" in out and p.returncode == 0,
      "rc=%s out=%r" % (p.returncode, out[:40]))
 
-# M3: proxy SIGKILL mid-session -> master returns 247 (masked -9) promptly
+# M3: proxy SIGKILL mid-session -> master returns 137 (shell 128+9) promptly
 p = start_master("fakevm", ["bash", "-c", "sleep 300"], keep_stdin_open=True)
 proxy = wait_chain(p)          # remote alive => confirmation sent
 if proxy is None:
     p.kill()
     p.wait()
-    case("M3 proxy-kill-247", False, "remote chain not up within 10 s")
+    case("M3 proxy-kill-137", False, "remote chain not up within 10 s")
 else:
     os.kill(proxy, signal.SIGKILL)      # who crashed: the proxy itself
     t0 = time.monotonic()
     p.wait(timeout=10)
     dt = time.monotonic() - t0
-    case("M3 proxy-kill-247", p.returncode == 247 and dt < 2.0,
+    case("M3 proxy-kill-137", p.returncode == 137 and dt < 2.0,
          "rc=%s dt=%.2f" % (p.returncode, dt))
     sleep = find_sleep300()            # orphan per spec 9.2; tidy the artifact
     if sleep:

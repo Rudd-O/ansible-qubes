@@ -7,10 +7,13 @@ ranked fix directions, and the post-audit design follow-up that produced the
 threadless specification. Those recommendations **were implemented** — per
 `docs/specs/Threadless algorithm.md` (decision IDs D1–D5, background and defect
 classes B1–B12 restated there in §1.2/§1.3) — as the single-file threadless
-rewrite now in `bin/bombshell-client` (2026-10-23, commit `1697697`; wire format
-byte-identical; local 14/14 and Qubes 18/18 green at time of writing). The full
-historical analysis is recoverable from this file's git history through the
-threadless commit.
+rewrite now in `bin/bombshell-client` (2026-10-23, commit `6720aea`; wire format
+byte-identical). A same-day follow-up, `4a2014f`, tightened the status convention:
+a signalled process now reports the shell convention **128+signum** (130/137),
+converted once at the single exit boundary (`_shell_status`, spec §7/§11.2), and
+this file's open sections were re-checked against that commit. The full historical
+analysis is recoverable from this file's git history through the threadless
+commit (superseded pre-amend version `1697697`).
 
 This file keeps only what that audit leaves **open**: recommendations never
 implemented, gaps found while re-auditing the threadless implementation,
@@ -131,8 +134,13 @@ lands.
   and other `BaseException` → **126** (pre-rewrite coarse distinction, matrix row 3;
   unchanged by design — spec §5.1 step 5).
 * 125/126/127 are bare literals in both roles; no named constants.
-* A garbage VM name exits with the qrexec proxy's raw status (typically 1) instead
-  of a clean 125 (matrix row 24: "fails noisily but works").
+* A garbage VM name exits with a clean **125** — the EOF-before-confirmation path
+  (spec §3.4 "Domain absent", §6.2; pinned locally by M4 "refused-domain-125").
+  The pre-rewrite row-24 observation (raw proxy status in place of 125) no longer
+  applies to the committed code: the only other confirmation-phase exit is an
+  early-proxy-death status (spec §6.4 D), signalled deaths from it included
+  (§4, first item). The qrexec error text still prints raw nonetheless — the
+  proxy's stderr is inherited (the "noisily" half of row 24).
 
 ### 3.3 CLI parse asymmetry (minor)
 
@@ -152,12 +160,17 @@ lands.
 * **Orphans persist.** Descendants are never `killpg`'d; they EPIPE at their next
   write or linger (D1; spec §9.2). The Qubes matrix deliberately leaves
   `tail -F` / `sleep 300` remnants in the test VM; the suites never clean them.
-* **Signal-death statuses are masked to 256−N.** The all-Python chain exits each
-  hop via `sys.exit(-N)`; CPython reports `(-N) & 0xFF`: SIGKILL surfaces as
-  **247** (not the shell-convention 137) and a relayed SIGINT as **254** (not 130).
-  Accepted on both ends; the spec's §11.2 status-mask note and the
-  `tests/qubes_probe.py` header record which values are accepted; there is
-  no normalization (and no comment) in the code.
+* **Signal-death statuses follow the shell convention (128+signum).** Decision of
+  record from `4a2014f`: a CPython wait status for a signalled process is negative
+  (−signum) and, left raw, would surface as `(-N) & 0xFF = 256−N` (247 for SIGKILL,
+  254 for SIGINT) — un-decodable by any caller. The implementation converts it
+  **once, at the single exit boundary** (`_shell_status`, spec §7), and every exit
+  path converges there — remote P5, master P17/P18, confirmation-phase
+  early-proxy-death (spec §6.4 D). Accepted on both ends; the spec's §11.2 status
+  note and the `tests/qubes_probe.py` / `tests/master_probe.py` headers record
+  the values; the suites assert 130/137 **strictly** (the old un-converted
+  247/254 readings can no longer occur and are failures), and the new local case
+  `tsig` (`kill -9 $$` → 137) pins the convention without Qubes.
 * **Backpressure has no timeouts.** Blocking writes + finite channel buffers: a
   permanently stuck local reader stalls the whole session (matrix row 25).
   Deliberate — the loops carry no `select` timeouts by design (D2).
@@ -201,7 +214,9 @@ lands.
 * `docs/specs/Threadless algorithm.md` — the full story of what was implemented
   (incident background §1.3, adopted decisions §1.2, wire contract §2, loops §5/§6,
   no-killpg §9.2, verification §11).
-* `tests/probe.py` (T1–T7b + `p10`), `tests/master_probe.py` (M1–M5),
-  `tests/qubes_probe.py` (T8–T15) — the suites; template quirks and observed
-  deviations are recorded in the suite headers, not here.
-* `bin/bombshell-client` — the implementation (572 lines, threadless, pure ASCII).
+* `tests/probe.py` (T1–T7b + `tsig` + `p10`), `tests/master_probe.py` (M1–M5,
+  M3's proxy-SIGKILL expectation strict on 137), `tests/qubes_probe.py` (T8–T15,
+  T9/T10/T13 strict on 130/137 per the §11.2 status convention) — the suites;
+  local 15/15 green at `4a2014f`; template quirks and observed deviations are
+  recorded in the suite headers, not here.
+* `bin/bombshell-client` — the implementation (589 lines, threadless, pure ASCII).

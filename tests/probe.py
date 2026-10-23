@@ -271,6 +271,16 @@ CASES = {
         ["bash", "-c", "cat"],
         [("io", 0, b"data\n"), ("close", 0), ("sleep", 1.0), ("eof",)],
     ),
+    # tsig: THE STATUS CONVENTION (spec section 11.2 status note; local
+    # pin of T9/T13 without Qubes).  A child that dies BY SIGNAL must be
+    # reported to the caller as the shell convention 128+signum --
+    # converted at the tool's single exit boundary (_shell_status).
+    # 137 == 128 + SIGKILL; an un-converted CPython (-9) mask would
+    # read 247.
+    "tsig": (
+        ["bash", "-c", "kill -9 $$"],
+        [("sleep", 0.5), ("eof",)],
+    ),
     # p10: the P10 channel-write-failure spin regression (spec section 3.3
     # P10, section 5.2 note 1).  The driver drops the channel's read end
     # at 0.1 s -- before the child starts emitting (0.2 s) -- so the
@@ -345,6 +355,11 @@ def check(name, rc, ret, frames, dt):
         assert rc == 0, ("expected the child's 0, got %s (P6 instead of P5?)"
                          % rc)
         assert b"data\n" in streamed(frames, 0), "cat echo missing"
+    if name == "tsig":
+        # shell convention for a signal-killed child: 128 + signum
+        assert rc == 137, ("signal-killed child must report 128+9 (137), "
+                           "got %s" % rc)
+        assert dt < 2.0, ("child death must end the session fast: %.2f s" % dt)
 
 
 def run_case(name):
@@ -379,7 +394,8 @@ def run_case(name):
 
 
 def main(argv):
-    names = argv or ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t7b", "p10"]
+    names = argv or ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t7b",
+                     "tsig", "p10"]
     failed = []
     t0 = time.time()
     for name in names:

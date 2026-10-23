@@ -24,10 +24,12 @@ Environment notes verified on the reference template (Qubes 7, F41):
     P6 lines (e.g. T10's 'channel closed' would poison T8d).
   * ps -C does not process-select on this template -- process checks
     use ps/grep/pgrep instead.
-  * T9/T13 status expectations: this implementation propagates
-    signal deaths through the all-Python chain as 254/247 (CPython
-    & 0xFF); the spec's observed real-Qubes values are 130/137.  Both
-    are accepted; anything else is a failure, reported side by side.
+  * T9/T10/T13 status expectations: a process the chain waits on that
+    dies by signal reports a negative CPython status; the tool converts
+    it once at its exit boundary (_shell_status, spec section 7) to the
+    shell convention 128+signum.  The assertions are STRICT on the
+    shell-convention values (130/137, matching the spec's observed
+    real-Qubes values); anything else is a failure.
 """
 import base64
 import hashlib
@@ -239,7 +241,7 @@ def t8_incident():
 def t9_status_fidelity():
     for script, expected, label in (
             ("exit 42", (42,), "T9 42-fidelity"),
-            ("kill -9 $$", (137, 247), "T9 kill-9-fidelity"),
+            ("kill -9 $$", (137,), "T9 kill-9-fidelity"),
             ("true", (0,), "T9 true-fidelity")):
         rc, _, _ = drain_session(["bash", "-c", script])
         ok = rc in expected
@@ -248,9 +250,9 @@ def t9_status_fidelity():
 
 def t10_proxy_kill():
     """Kill the qrexec proxy mid-session; the master must stop < 2 s
-    with the proxy's signal status, the remote sleep must orphan in
-    the VM, and the remote journal must show P6 (spec section 11.2
-    T10)."""
+    with the proxy's shell signal status (137), the remote sleep must
+    orphan in the VM, and the remote journal must show P6 (spec
+    section 11.2 T10)."""
     p = start_session(["bash", "-c", "sleep 300"], keep_stdin_open=True)
     wait_for_confirmation_done(p)
     time.sleep(1.0)                    # remote bash is idling in select
@@ -265,7 +267,7 @@ def t10_proxy_kill():
     p.wait(timeout=15)
     dt = time.monotonic() - t0
     case("T10 proxy-kill-<2s",
-         p.returncode in (137, 247) and dt < 2.0,
+         p.returncode == 137 and dt < 2.0,
          "rc=%s dt=%.2f" % (p.returncode, dt))
     time.sleep(2.0)                    # let the remote log P6, if so fated
     _, pso, _ = drain_session(["bash", "-c",
@@ -303,14 +305,14 @@ def t12_ctrl_d():
 def t13_ctrl_c():
     """The kernel never delivers the TTY's SIGINT to the remote child
     (it is in its own session); only P14->P11 can deliver it.  Pass:
-    remote bash dies 130/254, the backgrounded sleep orphans
-    (spec section 11.2 T13)."""
+    remote bash dies 130 (128+SIGINT, shell convention), the
+    backgrounded sleep orphans (spec section 11.2 T13)."""
     p = start_session(["bash"], keep_stdin_open=True)
     wait_for_confirmation_done(p)
     keystroke(p, "sleep 300 &\n", margin=0.7)
     p.send_signal(signal.SIGINT)
     rc, out, err = harvest(p)
-    case("T13 sigint-relay-death", rc in (130, 254), "rc=%s" % rc)
+    case("T13 sigint-relay-death", rc == 130, "rc=%s" % rc)
     _, pso, _ = drain_session(["bash", "-c",
                                "ps -eo pid,stat,args -ww | grep -F ' sleep 300'"])
     case("T13 sleep-orphans-in-vm", b"sleep 300" in pso,

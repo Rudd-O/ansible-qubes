@@ -1,9 +1,11 @@
 # Threadless rewrite of `bin/bombshell-client` — implementation specification
 
 Status: **implemented and verified (2026-10-23)**. The port described below is in
-`bin/bombshell-client` (572 lines, threadless) and the test suites under `tests/` are
-green — local 14/14 (`probe.py`, including the `p10` channel-loss regression case,
-plus `master_probe.py`), Qubes matrix 18/18 vs a disposable VM
+`bin/bombshell-client` (589 lines, threadless) and the test suites under `tests/` are
+green — local 15/15 (`probe.py`, including the `tsig` status-convention pin and the
+`p10` channel-loss regression case, plus `master_probe.py`), Qubes matrix vs a
+disposable VM (18/18 at the port, status expectations since strict on 130/137 per
+the §11.2 status convention)
 (`make test` / `make test-qubes VM=<vm>`). Observed deviations are recorded where
 they bite an expectation (the §11.2 notes, the `tests/qubes_probe.py` header); the
 pre-rewrite audit's *unimplemented* recommendations live in `docs/Pre-LLM audit.md`.
@@ -270,6 +272,10 @@ Consequences: on the wake that ends the session, buffered final lines are delive
   (qrexec behavior — §3.4).*
 - **Remote died violently** (killed, OOM): proxy exits → master P17/P18 → returns the
   proxy code.
+- **Status convention:** where the waited process died *by a signal*, the CPython wait
+  status is negative (−signum). `_shell_status` (§7) normalizes it to the shell
+  convention **128+signum** (130 for SIGINT, 137 for SIGKILL) at the single exit
+  boundary; no status path bypasses the conversion (§11.2 status note).
 - **Domain absent:** no confirmation; EOF path returns 125 (§2.1).
 
 ---
@@ -768,6 +774,15 @@ no join, so no competitor of join-order (the B7 class, §1.3, is unrepresentable
   and upgrades `MyThread.run`'s `os._exit(124)` catch-all (B1, §1.3) into a real
   top-level handler:
   ```python
+  def _shell_status(status):
+      # THE single status conversion point (§11.2 status note): a CPython
+      # wait status for a signalled process is negative; convert once,
+      # at this boundary, to the shell convention 128+signum (130/137)
+      if status is None:
+          return 1
+      return 128 - status if status < 0 else status
+
+
   def _main():
       try:
           if "__file__" in locals() and not ("-s" in sys.argv[1:2]):
@@ -781,10 +796,19 @@ no join, so no competitor of join-order (the B7 class, §1.3, is unrepresentable
           logging.error("unhandled exception in the main loop")
           logging.error("traceback: %s", traceback.format_exc())
           return 1
-  sys.exit(_main())
+  sys.exit(_shell_status(_main()))
   ```
   Uncaught exceptions now exit **1** with a syslog traceback instead of the
   never-returns `os._exit(124)`.
+- **Status convention (§11.2 status note):** `_shell_status` is the *only*
+  normalization of a negatively-marked wait status: it maps a CPython
+  signal status (−signum) to the shell convention 128+signum (130 for
+  SIGINT, 137 for SIGKILL) before `sys.exit`, covering every exit path —
+  remote P5 (signalled child), master P17/P18 (signalled proxy), or any
+  other future return. A raw −N left to `sys.exit` would surface as
+  `256−N` (CPython `& 0xFF`: 247/254), which no calling script decodes;
+  the converted value is what the caller's own shell reports for the
+  identical local kill.
 - Imports: drop the Python-2 fallback shims (lines 9–17, the `queue`/`Queue` try/except
   and the `shlex`/`pipes` try/except) — Python 3 only (Qubes floor; §12 Q3). Keep
   `traceback` (top-level handler). The internal `import time` for the `LoggingEmu` timing
@@ -823,8 +847,10 @@ no join, so no competitor of join-order (the B7 class, §1.3, is unrepresentable
 
 New symbols to add: `read_exact`, `write_all_file`, `writev_all`, `send_frame`,
 `HANDLED_SIGNALS`, the two self-pipe wiring blocks, the confirmation phase (§6.2),
-both loops. Target new-file size ≈ 430–470 lines (actual: 572 — the delta from the estimate
-is documentation comments, not new logic).
+both loops, and — by the status-convention follow-up — the `_shell_status` exit
+boundary (§7). Target new-file size ≈ 430–470 lines (actual: 572 at the port, 589
+after the follow-up — the delta from the estimate is documentation comments, not
+new logic).
 
 ---
 
@@ -848,7 +874,11 @@ d. **Channel loss with a live child** (remote: qrexec channel dropped while the 
    proxy status (typically 137). Previously: the remote kept pumping output into a dead channel until a muxer
    thread crashed the process with `os._exit(124)`.
 e. **Exit codes:** unchanged on all pre-existing paths (125/127/126/child status); the
-   *new* code 1 is observable only in case (d).
+   *new* code 1 is observable only in case (d).  A child *killed by a signal* now
+   surfaces as the shell convention **128+signum** (130 for SIGINT, 137 for SIGKILL)
+   — the one conversion at the exit boundary (`_shell_status`, §7); previously the
+   raw CPython negative status reached `sys.exit` and surfaced as `256−N`
+   (254/247), un-decodable by any caller.
 f. **Log-line naming:** thread names ("remote multiplexer", "master signaler", …) become
    the end prefix ("remote" / "master"); the syslog streams themselves are preserved
    (ident `bombshell-client.master` / `.remote`, same `%.3f` offset).
@@ -900,7 +930,7 @@ in that setting. When the pty work returns to session cleanup, revisit in one pa
     def main_remote():    §5.1 + §5.2
     def main_master():    §6.1 + §6.2 + §6.3
     sys.stdin / sys.stdout bootstrap wrappers                                (487–488)
-    def _main():  +  sys.exit(_main())                                       (§7)
+    def _shell_status() + def _main() + sys.exit(_shell_status(_main()))      (§7)
 ```
 
 Style rules to respect: the file is a module on *both* ends (self-embedding via
@@ -940,6 +970,7 @@ reference it was written from), implements `run(cmd, actions) -> (rc, frames_byt
 | T6 | `bash -c 'for i in $(seq 1 20000); do echo line-$i; done'` | eof | rc 0; all 20000 lines received (accumulator + readinto-loop under `MAX_MUX_READ` chunking; no frame loss, total payload = full output) |
 | T7 | `/nonexistent-binary` | eof | confirmation `127` before any frame; rc of remote process 0 (confirmation carries the code; the process exit is irrelevant) |
 | T7b **stream close (Ctrl-D analog)** | `bash -c 'cat'` | io(0, b"data\n"), close(0), sleep 1 s, eof | rc 0; frame `data(0) "data\n"`; P7 ran: the close frame closed `p.stdin`, `cat` exited on EOF, and the death wake returned the status *before* the channel EOF |
+| tsig **status convention** | `bash -c 'kill -9 $$'` | sleep 0.5 s, eof | rc **137** — the child died *by signal*; the remote role reports the shell convention 128+signum (converted at the single exit boundary, §7).  Pins the §11.2 status note locally, without Qubes |
 
 T3 is the *regression of the headline incident* in its minimal form; T7b is the local
 analog of Qubes T12 (Ctrl-D).
@@ -965,12 +996,15 @@ spin in the `channel_dead` guard. `tests/probe.py` runs it; its 30 s watchdog pr
 | T14 **stream separation** | `bombshell-client <vm> 'bash -c "echo A; echo B >&2; echo C"'` | A, C on the master's stdout; B on the master's stderr — not jumbled |
 | T15 **end is waitable** (smoking gun of the design) | run T8 with `strace -f` on the remote | the remote `bombshell-client` is at no point in a polling loop: during the session it blocks only in `pselect/select`; there is *no* thread and no repeating `waitpid` — exactly one `select` of the four fds, and one `waitpid(pid, WNOHANG)` at child death |
 
-**Status-mask note (affects T9 and T13).** Where the child dies *by signal* and the
-all-Python chain carries that status up, every Python hop exits via `sys.exit(-N)`,
-which CPython surfaces as `(-N) & 0xFF = 256−N`: SIGKILL therefore observes as
-**247** (not the shell-convention 137) and a relayed SIGINT as **254** (not 130).
-The suites accept both values and report the observed one; the T9/T13 rows above
-quote the conventional value, and either is in scope.
+**Status convention (affects T9, T10 and T13).** Where the waited process dies
+*by signal*, the CPython wait status is negative (−signum).  The implementation
+converts it **once, at the single exit boundary** (`_shell_status`, §7) before
+`sys.exit`: a signalled remote child and a killed proxy both report
+**128+signum** — 130 for a relayed SIGINT, 137 for SIGKILL — the value every
+calling shell reports for the identical local kill, and the one the T9/T10/T13
+rows above quote.  The suites assert the shell-convention value strictly; the
+old un-converted reading (`(-N) & 0xFF = 256−N`: 247/254) can no longer occur
+and is a failure.
 
 ### 11.3 Code-level QA (run after implementation, before any Qubes test)
 
@@ -1031,7 +1065,7 @@ group signal — §9.2) — **do not add a time-out select in the loop**.
 ## 13. Acceptance criteria (definition of done)
 
 - §11.3 forbidden/required pattern checks pass.
-- Local T1–T7b plus the `p10` channel-loss regression green (`tests/probe.py`).
+- Local T1–T7b, the `tsig` status-convention pin, and the `p10` channel-loss regression green (`tests/probe.py`).
 - Qubes T8–T15 green; incident (T8) and T9/T10 wall-time budget < 2 s.
 - The incident's steps 4–7 (§1.3) are unreachable under the new code: step 4 vanishes
   (no `muxer.join()` — the remote `return`s at P5 without waiting for the
