@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""Fake qrexec-client-vm for local master-side tests.
+
+Executes the helper one-liner the master streams into its stdin via
+bash -c, which self-embeds and runs the remote role over the proxy's
+standard in/out.  Exit status propagates, mirroring qrexec (T9).
+
+The helper is one LOGICAL bash line: its quoted source carries embedded
+physical newlines, so it must be consumed the same way the real
+qubes.VMShell service consumes commands -- physical lines until the
+command is syntactically complete.  Completion is judged with the same
+state rules bash itself applies to this helper's legal form: a ' opens
+a region that only the next unquoted ' closes (an escaped apostrophe,
+as shlex.quote emits it, re-opens on its final quote, so the net state
+stays inside the region); outside quotes, a backslash hides the next
+character.  (Backticks and $(...) never appear outside the
+single-quote blob in this helper, so no nesting logic is needed.)
+
+Usage: qrexec-client-vm <vm> qubes.VMShell
+  <vm> starting with "refuse" -> prints 'Request refused', exits 125.
+"""
+import os
+import sys
+
+
+def open_quote_chars(buf):
+    """Return the quote region bash considers open at end of buf
+    (None = command complete, else the quote character)."""
+    in_q = None
+    i = 0
+    while i < len(buf):
+        c = buf[i]
+        if in_q:
+            if c == in_q:
+                in_q = None
+        elif c == "'":
+            in_q = c
+        elif c == '"':
+            in_q = c
+        elif c == "\\":
+            i += 1        # outside quotes: backslash hides the next char
+        i += 1
+    return in_q
+
+
+def read_logical_line(stdin):
+    buf = ""
+    while True:
+        line = stdin.readline()
+        if not line:
+            return buf
+        buf += line
+        if open_quote_chars(buf) is None:
+            return buf
+
+
+def main():
+    vm = sys.argv[1] if len(sys.argv) > 1 else ""
+    line = read_logical_line(sys.stdin)
+    if not line:
+        return 1
+    if vm.startswith("refuse"):
+        sys.stderr.write("Request refused\n")
+        return 125
+    os.execv("/bin/bash", ["bash", "-c", line])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

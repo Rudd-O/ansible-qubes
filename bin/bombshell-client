@@ -1,32 +1,22 @@
 #!/usr/bin/python3 -u
 
 import base64
-import pickle
 import errno
 import fcntl
 import os
-
-try:
-    from shlex import quote
-except ImportError:
-    from pipes import quote  # noqa
-
-try:
-    from queue import Queue
-except ImportError:
-    from Queue import Queue  # noqa
+import pickle
 import select
 import signal
 import struct
 import subprocess
 import sys
 import syslog
-import threading
 import time
 import traceback
+from shlex import quote
 
 
-MAX_MUX_READ = 128 * 1024  # 64*1024*1024
+MAX_MUX_READ = 128 * 1024
 PACKLEN = 8
 PACKFORMAT = "!HbIx"
 
@@ -65,7 +55,6 @@ def openfdforread(fd):
     return f
 
 
-debug_lock = threading.Lock()
 debug_enabled = False
 _startt = time.time()
 
@@ -87,21 +76,16 @@ class LoggingEmu:
         self._print(syslog.LOG_ERR, *a, **kw)
 
     def _print(self, prio, *a, **kw):
-        debug_lock.acquire()
         global _startt
         deltat = time.time() - _startt
-        try:
-            if len(a) == 1:
-                string = a[0]
-            else:
-                string = a[0] % a[1:]
-            n = threading.current_thread().name
-            syslog.syslog(
-                prio,
-                ("%.3f  " % deltat) + n + ": " + string,
-            )
-        finally:
-            debug_lock.release()
+        if len(a) == 1:
+            string = a[0]
+        else:
+            string = a[0] % a[1:]
+        syslog.syslog(
+            prio,
+            ("%.3f  " % deltat) + self.prefix + ": " + string,
+        )
 
 
 logging = None
@@ -122,199 +106,64 @@ def send_confirmation(chan, retval, errmsg):
     )
 
 
-def recv_confirmation(chan):
-    logging.debug("Waiting for confirmation on channel %s", chan)
-    r = chan.read(2)
-    if len(r) == 0:
-        # This happens when the remote domain does not exist.
-        r, errmsg = 125, "domain does not exist"
-        logging.debug("No confirmation: %s %s", r, errmsg)
-        return r, errmsg
-    assert len(r) == 2, r
-    r = struct.unpack("!H", r)[0]
-    lc = chan.read(4)
-    assert len(lc) == 4, lc
-    lu = struct.unpack("!I", lc)[0]
-    errmsg = chan.read(lu)
-    logging.debug("Received confirmation: %s %s", r, errmsg)
-    return r, errmsg
+def read_exact(f, n):
+    """Blocking read of exactly n bytes. Returns None on EOF.
+    Successor to the fragile 2/4/lc reads of recv_confirmation."""
+    buf = b""
+    while len(buf) < n:
+        chunk = f.read(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
 
 
-class MyThread(threading.Thread):
-    def run(self):
-        try:
-            self._run()
-        except Exception:
-            n = threading.current_thread().name
-            logging.error("%s: unexpected exception", n)
-            tb = traceback.format_exc()
-            logging.error("%s: traceback: %s", n, tb)
-            logging.error("%s: exiting program", n)
-            os._exit(124)
-
-
-class SignalSender(MyThread):
-    def __init__(self, signals, sigqueue):
-        """Handles signals by pushing them into a file-like object."""
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.queue = Queue()
-        self.sigqueue = sigqueue
-        for sig in signals:
-            signal.signal(sig, self.copy)
-
-    def copy(self, signum, frame):
-        self.queue.put(signum)
-        logging.debug("Signal %s pushed to queue", signum)
-
-    def _run(self):
-        while True:
-            signum = self.queue.get()
-            logging.debug("Dequeued signal %s", signum)
-            if signum is None:
-                break
-            assert signum > 0
-            self.sigqueue.write(struct.pack("!H", signum))
-            self.sigqueue.flush()
-            logging.debug("Wrote signal %s to remote end", signum)
-
-
-class Signaler(MyThread):
-    def __init__(self, process, sigqueue):
-        """Reads integers from a file-like object and relays that as kill()."""
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.process = process
-        self.sigqueue = sigqueue
-
-    def _run(self):
-        while True:
-            data = self.sigqueue.read(2)
-            if len(data) == 0:
-                logging.debug("Received no signal data")
-                break
-            assert len(data) == 2
-            signum = struct.unpack("!H", data)[0]
-            logging.debug(
-                "Received relayed signal %s, sending to process %s",
-                signum,
-                self.process.pid,
-            )
-            try:
-                self.process.send_signal(signum)
-            except BaseException as e:
-                logging.error(
-                    "Failed to relay signal %s to process %s: %s",
-                    signum,
-                    self.process.pid,
-                    e,
-                )
-        logging.debug("End of signaler")
-
-
-def write(dst, buffer, ln):
-    alreadywritten = 0
-    mv = memoryview(buffer)[:ln]
+def write_all_file(f, data):
+    """Real partial-write loop for file objects. Returns bytes written.
+    EPIPE/OSError propagate  --  callers apply per-sink policy (P9/P15/P12)."""
+    mv = memoryview(data)
+    written = 0
     while len(mv):
-        dst.write(mv)
-        writtenthisloop = len(mv)
-        if writtenthisloop is None or writtenthisloop < 1:
-            raise Exception("copy: Failed to write any bytes")
-        mv = mv[writtenthisloop:]
-        alreadywritten = alreadywritten + writtenthisloop
+        k = f.write(mv)
+        if k is None or k < 1:
+            raise OSError(errno.EIO, "short write on %s" % f)
+        written += k
+        mv = mv[k:]
+    return written
 
 
-def copy(src, dst, buffer, ln):
-    alreadyread = 0
-    mv = memoryview(buffer)[:ln]
-    assert len(mv) == ln, "Buffer object is too small: %s %s" % (len(mv), ln)
-    while len(mv):
-        _, _, _ = select.select([src], (), ())
-        readthisloop = src.readinto(mv)
-        if readthisloop is None or readthisloop < 1:
-            raise Exception("copy: Failed to read any bytes")
-        mv = mv[readthisloop:]
-        alreadyread = alreadyread + readthisloop
-    return write(dst, buffer, ln)
+def writev_all(fd, buffers):
+    """Loop os.writev until every buffer is fully written. A safe EPIPE
+    raises. The header/payload pair of a frame leaves through here  --  one
+    logical unit (spec section 2.3/section 4.4: the pre-rewrite end's
+    adjacent separate syscalls were the tear class this removes)."""
+    views = [memoryview(b) for b in buffers if b]
+    total = sum(len(v) for v in views)
+    done = 0
+    while done < total:
+        k = os.writev(fd, views)
+        if k <= 0:
+            raise OSError(errno.EIO, "writev did not advance")
+        done += k
+        i = 0
+        while k and i < len(views):
+            take = min(k, len(views[i]))
+            views[i] = views[i][take:]
+            k -= take
+            i += 1
+        while views and not len(views[0]):
+            views.pop(0)
+    return total
 
 
-class DataMultiplexer(MyThread):
-    def __init__(self, sources, sink):
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.sources = dict((s, num) for num, s in enumerate(sources))
-        self.sink = sink
-
-    def _run(self):
-        logging.debug(
-            "mux: Started with sources %s and sink %s", self.sources, self.sink
-        )
-        buffer = bytearray(MAX_MUX_READ)
-        while self.sources:
-            sources, _, x = select.select(
-                (s for s in self.sources), (), (s for s in self.sources)
-            )
-            assert not x, x
-            for s in sources:
-                n = self.sources[s]
-                logging.debug("mux: Source %s (%s) is active", n, s)
-                readthisloop = s.readinto(buffer)
-                if readthisloop == 0:
-                    logging.debug(
-                        "mux: Received no bytes from source %s, signaling"
-                        " peer to close corresponding source",
-                        n,
-                    )
-                    del self.sources[s]
-                    header = struct.pack(PACKFORMAT, n, False, 0)
-                    self.sink.write(header)
-                    continue
-                ln = readthisloop
-                header = struct.pack(PACKFORMAT, n, True, ln)
-                self.sink.write(header)
-                write(self.sink, buffer, ln)
-        logging.debug("mux: End of data multiplexer")
-
-
-class DataDemultiplexer(MyThread):
-    def __init__(self, source, sinks):
-        threading.Thread.__init__(self)
-        self.daemon = True
-        self.sinks = dict(enumerate(sinks))
-        self.source = source
-
-    def _run(self):
-        logging.debug(
-            "demux: Started with source %s and sinks %s",
-            self.source,
-            self.sinks,
-        )
-        buffer = bytearray(MAX_MUX_READ)
-        while self.sinks:
-            r, _, x = select.select([self.source], (), [self.source])
-            assert not x, x
-            for s in r:
-                header = s.read(PACKLEN)
-                if header == b"":
-                    logging.debug(
-                        "demux: Received no bytes from source, closing sinks",
-                    )
-                    for sink in self.sinks.values():
-                        sink.close()
-                    self.sinks = []
-                    break
-                n, active, ln = struct.unpack(PACKFORMAT, header)
-                if not active:
-                    logging.debug(
-                        "demux: Source %s inactive, closing matching sink %s",
-                        s,
-                        self.sinks[n],
-                    )
-                    self.sinks[n].close()
-                    del self.sinks[n]
-                else:
-                    copy(self.source, self.sinks[n], buffer, ln)
-        logging.debug("demux: End of data demultiplexer")
+def send_frame(fd, stream, active, payload=b""):
+    """One multiplex frame: 8-byte header + payload, one writev.
+    close == active False, payload empty."""
+    header = struct.pack(PACKFORMAT, stream, active, len(payload))
+    if payload:
+        writev_all(fd, [header, payload])
+    else:
+        os.write(fd, header)
 
 
 def quotedargs():
@@ -326,6 +175,182 @@ def quotedargs_ellipsized(cmdlist):
     if len(text) > 80:
         text = text[:77] + "..."
     return text
+
+
+HANDLED_SIGNALS = (
+    signal.SIGINT,
+    signal.SIGABRT,
+    signal.SIGALRM,
+    signal.SIGTERM,
+    signal.SIGUSR1,
+    signal.SIGUSR2,
+    signal.SIGTSTP,
+    signal.SIGCONT,
+)
+
+
+def main_remote():
+    set_proc_name("bombshell-client (remote) %s" % quotedargs())
+    global logging
+    logging = LoggingEmu("remote")
+
+    logging.info("Started with arguments: %s", quotedargs_ellipsized(sys.argv[1:]))
+
+    # The remote is invoked either self-embedded (python -c: CPython
+    # normalizes sys.argv to ['-c', ...], dropping the interpreter, -u
+    # and the source argument) or directly (-s); the base64 pickle
+    # payload is ALWAYS the last argument in every launch form, and
+    # the base64 alphabet never starts a token with '-'.
+    global debug_enabled
+    if "-d" in sys.argv[1:]:
+        debug_enabled = True
+    cmd_b64 = sys.argv[-1]
+
+    cmd = pickle.loads(base64.b64decode(cmd_b64))
+    logging.debug("Received command: %s", cmd)
+
+    nicecmd = quotedargs_ellipsized(cmd)
+
+    # SIGCHLD self-pipe, wired before Popen (spec section 4.5 invariant 1): a child
+    # that dies at exec must still wake the loop. The handler writes one
+    # byte and nothing else; reaping happens only in the death branch.
+    chld_rd, chld_wr = os.pipe()
+    os.set_blocking(chld_wr, False)
+    signal.signal(signal.SIGCHLD, lambda s, f: os.write(chld_wr, b"\x01"))
+
+    try:
+        p = subprocess.Popen(
+            cmd,
+            # The child gets its own session and process group, so
+            # group-wide signals (e.g. the remote VM's own Ctrl-C) no
+            # longer hit it at the kernel level  --  relay stays frame-only,
+            # one delivery (spec section 5.1/section 9.1 c).
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            close_fds=True,
+            bufsize=0,
+        )
+        # one defensive read right after spawn: instant exec failure is
+        # caught harmlessly (Popen caches the status for the death branch)
+        p.poll()
+        send_confirmation(sys.stdout, 0, b"")
+    except OSError as e:
+        msg = "cannot execute %s: %s" % (nicecmd, e)
+        logging.error(msg)
+        send_confirmation(sys.stdout, 127, bytes(msg, "utf-8"))
+        return 0
+    except BaseException as e:
+        msg = "cannot execute %s: %s" % (nicecmd, e)
+        logging.error(msg)
+        send_confirmation(sys.stdout, 126, bytes(msg, "utf-8"))
+        return 0
+
+    logging.info("Started %s", nicecmd)
+
+    # The single loop: exactly four uniformly-ready sources per round  -- 
+    # channel (sys.stdin), child stdout, child stderr, death pipe.
+    # No timeout, no per-wake reaping probe: the death byte is the
+    # waitable end-of-session (spec section 7.5.2).
+    live_out = {0: p.stdout, 1: p.stderr}    # outward frames: 0=stdout, 1=stderr
+    stdin_open = True                        # inward stream 0's sink (child stdin)
+    acc = bytearray()                        # frame accumulator: short reads impossible
+    buf = bytearray(MAX_MUX_READ)            # scratch for readinto
+    chan_out = sys.stdout.fileno()
+    channel_dead = False
+
+    while True:
+        r = select.select(
+            [sys.stdin, chld_rd] + list(live_out.values()), [], []
+        )[0]
+        # (after both close frames: [sys.stdin, chld_rd]  --  still meaningful,
+        # still bounded: the child either dies (P5), or the peer goes (P6).)
+        # channel_dead is per-wake (spec section 5.2, note 1): once set by a
+        # failed channel send in branch (1), it skips branches (3)/(4) only
+        # for the rest of this wake; the next wake re-tests, so P5/P6 stay
+        # reachable after a channel loss instead of the loop spinning.
+        channel_dead = False
+
+        # (1) child stdout, (2) child stderr  --  drain order (spec section 7.5.3)
+        for n in (0, 1):
+            src = live_out.get(n)
+            if src is None or src not in r:
+                continue
+            have = src.readinto(buf)
+            if have == 0:                                  # EOF: close frame, once
+                src.close()
+                del live_out[n]
+                try:
+                    send_frame(chan_out, n, False)
+                except OSError as e:
+                    logging.error("can't close stream %d frame: %s", n, e)
+                    channel_dead = True
+                    break
+            else:                                          # data: framed writev
+                try:
+                    send_frame(chan_out, n, True, memoryview(buf)[:have])
+                except OSError as e:                       # P10
+                    logging.error("channel write failed: %s", e)
+                    channel_dead = True
+                    break
+
+        # (3) child death  --  the waitable end-of-session; reaping is once, here.
+        if not channel_dead and chld_rd in r:
+            os.read(chld_rd, 64)                           # drains the wake byte(s)
+            p.poll()                                       # = waitpid(WNOHANG)
+            rc = p.returncode
+            logging.info("child exited, status %s", rc)
+            # No group kill: grand-children are orphaned; they EPIPE at
+            # their next write or linger  --  accepted (spec section 9.2).
+            return rc if rc is not None else 1             # ABANDON: no drain
+
+        # (4) channel input  --  last; any keystroke in the fatal wake is
+        # never framed (spec section 9.1 g)
+        if not channel_dead and sys.stdin in r:
+            chunk = sys.stdin.read(MAX_MUX_READ)
+            if not chunk:                                  # P6: channel EOF
+                logging.error("channel closed, child still alive")
+                return 1                                   # child orphaned
+            acc += chunk
+            while len(acc) >= PACKLEN:
+                n, active, ln = struct.unpack(PACKFORMAT, acc[:PACKLEN])
+                need = PACKLEN + (0 if not active else ln)
+                if len(acc) < need:
+                    break                                  # partial body: wait
+                body = bytes(acc[PACKLEN:need])
+                del acc[:need]
+                if not active:                             # P7/P8: close frame
+                    if n == 0 and stdin_open:
+                        p.stdin.close()
+                        stdin_open = False
+                        logging.debug("child stdin closed by peer")
+                    # n==1 close has nothing to close (signals are stateless);
+                    # repeated closes are no-ops, never errors
+                    continue
+                if n == 0:                                 # P9: keyboard input
+                    if stdin_open:
+                        try:
+                            write_all_file(p.stdin, body)
+                        except OSError as e:
+                            # child died in this wake, before the death
+                            # byte arrived; per-sink demotion, not fatal
+                            logging.debug("child stdin dead: %s", e)
+                            p.stdin.close()
+                            stdin_open = False
+                    # a stream-0 frame with stdin closed is dropped, never
+                    # an error
+                elif n == 1:                               # P11: relayed signal
+                    for i in range(0, len(body) - 1, 2):
+                        try:
+                            p.send_signal(
+                                struct.unpack("!H", body[i:i + 2])[0]
+                            )
+                        except OSError as e:
+                            logging.debug("signal delivery failed: %s", e)
+    # Only P5 (child death) and P6 (channel EOF) end the loop  --  both by return.
+    return 0
+
 
 def main_master():
     set_proc_name("bombshell-client (master) %s" % quotedargs())
@@ -350,9 +375,11 @@ def main_master():
             quote(exe),
         )
 
+    # The remote bootstrap helper text stays byte-identical (wire contract,
+    # spec section 1.1); do not reformat anything inside.
     remote_helper_text = b"exec "
     remote_helper_text += bytes(anypython(sys.executable), "utf-8")
-    remote_helper_text += bytes(" -u -c ", "utf-8")
+    remote_helper_text += b" -u -c "
     remote_helper_text += bytes(
         quote(open(__file__, "r").read()),
         "ascii",
@@ -363,6 +390,13 @@ def main_master():
 
     saved_stderr = openfdforappend(os.dup(sys.stderr.fileno()))
 
+    # SIGCHLD self-pipe, wired before Popen (spec section 4.5 invariant 1): the
+    # qrexec-client-vm proxy is our only child; its death is the master's
+    # session-end event (P17).
+    chld_rd, chld_wr = os.pipe()
+    os.set_blocking(chld_wr, False)
+    signal.signal(signal.SIGCHLD, lambda s, f: os.write(chld_wr, b"\x01"))
+
     try:
         p = subprocess.Popen(
             ["qrexec-client-vm", remote_vm, "qubes.VMShell"],
@@ -372,6 +406,8 @@ def main_master():
             preexec_fn=os.setpgrp,
             bufsize=0,
         )
+        # one defensive read right after spawn (spec section 6.1 step 5)
+        p.poll()
     except OSError as e:
         logging.error("cannot launch qrexec-client-vm: %s", e)
         return 127
@@ -380,113 +416,157 @@ def main_master():
     p.stdin.write(remote_helper_text)
     p.stdin.flush()
 
-    confirmation, errmsg = recv_confirmation(p.stdout)
+    # The confirmation phase (spec section 6.2): select-gated accumulation, before
+    # the TTY or the signal pipe occur in any read list. The proxy may die
+    # before the confirmation arrives; the two possibilities are
+    # distinguished here, never polled.
+    conf = bytearray()
+    confirmation = None
+    while confirmation is None:
+        r = select.select([p.stdout, chld_rd], [], [])[0]
+        if p.stdout in r:
+            got = p.stdout.read(MAX_MUX_READ)
+            if got:
+                conf += got
+                if len(conf) >= 2:
+                    code = struct.unpack("!H", bytes(conf[:2]))[0]
+                    if len(conf) >= 6:
+                        ln = struct.unpack("!I", bytes(conf[2:6]))[0]
+                        if len(conf) >= 6 + ln:
+                            errmsg = bytes(conf[6:6 + ln])
+                            if code != 0:
+                                logging.error(
+                                    "remote: %s", errmsg.decode("utf-8", "replace")
+                                )
+                            confirmation = code
+            else:
+                # EOF before anything parseable: "domain does not exist"
+                return 125
+        if chld_rd in r:
+            os.read(chld_rd, 64)
+            p.poll()
+            rc = p.returncode
+            logging.error("proxy died before confirmation, status %s", rc)
+            return rc if rc is not None else 125
+
     if confirmation != 0:
-        logging.error("remote: %s", errmsg)
         return confirmation
+    # confirmation == 0: clean session start
 
-    handled_signals = (
-        signal.SIGINT,
-        signal.SIGABRT,
-        signal.SIGALRM,
-        signal.SIGTERM,
-        signal.SIGUSR1,
-        signal.SIGUSR2,
-        signal.SIGTSTP,
-        signal.SIGCONT,
-    )
-    read_signals, write_signals = pairofpipes()
-    signaler = SignalSender(handled_signals, write_signals)
-    signaler.name = "master signaler"
-    signaler.start()
+    # The signal-relay self-pipe (master only, spec section 4.6): one byte = the
+    # signum; reached only after a clean confirmation, matching the
+    # current install order.
+    sig_rd, sig_wr = os.pipe()
+    os.set_blocking(sig_wr, False)
+    for sig in HANDLED_SIGNALS:
+        signal.signal(sig, lambda s, f: os.write(sig_wr, bytes((s,))))
 
-    muxer = DataMultiplexer([sys.stdin, read_signals], p.stdin)
-    muxer.name = "master multiplexer"
-    muxer.start()
+    # The session loop: four uniformly-ready sources per round  --  proxy
+    # stdout, user TTY (while it is live), signal pipe, death pipe.
+    in_live = {0: sys.stdout, 1: saved_stderr}   # channel frame n -> local sink
+    kbd_live = True                             # TTY stream 0 still readable
+    acc = bytearray()                           # receiver accumulator
+    channel_dead = False
 
-    demuxer = DataDemultiplexer(p.stdout, [sys.stdout, saved_stderr])
-    demuxer.name = "master demultiplexer"
-    demuxer.start()
+    while True:
+        r = select.select(
+            [p.stdout] + ([sys.stdin] if kbd_live else []) + [sig_rd, chld_rd],
+            [], []
+        )[0]
 
-    retval = p.wait()
-    logging.info("Return code %s for qubes.VMShell proxy", retval)
-    demuxer.join()
-    logging.info("Ending bombshell")
-    return retval
+        # (1) channel demux first  --  final lines arrive before any end (spec section 7.5.3)
+        if p.stdout in r:
+            got = p.stdout.read(MAX_MUX_READ)
+            if got:
+                acc += got
+            while len(acc) >= PACKLEN:
+                n, active, ln = struct.unpack(PACKFORMAT, acc[:PACKLEN])
+                need = PACKLEN + (0 if not active else ln)
+                if len(acc) < need:
+                    break                                 # partial body: wait
+                body = bytes(acc[PACKLEN:need])
+                del acc[:need]
+                sink = in_live.get(n)
+                if sink is None:
+                    continue        # sink already dropped: a no-op, never an error
+                if active:                       # P15
+                    try:
+                        write_all_file(sink, body)
+                    except OSError as e:
+                        logging.debug("local sink %d dead: %s", n, e)
+                        sink.close()
+                        del in_live[n]            # sink EPIPE: drop, continue
+                else:                            # P16
+                    logging.debug("remote closed stream %d", n)
+                    sink.close()
+                    del in_live[n]
+            if not got:                          # P18: channel EOF
+                logging.debug("channel EOF")
+                channel_dead = True
+                break             # any remainder in acc was delivered above
 
+        # (2) proxy death  --  the master's session-end detector; reaping is once
+        if not channel_dead and chld_rd in r:
+            os.read(chld_rd, 64)
+            p.poll()
+            rc = p.returncode
+            logging.info("proxy exit status %s (== remote session status)", rc)
+            return rc if rc is not None else 1
 
-def pairofpipes():
-    read, write = os.pipe()
-    return os.fdopen(read, "rb", 0), os.fdopen(write, "wb", 0)
+        # (3) local signals -> frame n=1
+        if not channel_dead and sig_rd in r:
+            data = os.read(sig_rd, 64)
+            for b in data:
+                try:
+                    send_frame(
+                        p.stdin.fileno(), 1, True, struct.pack("!H", b)
+                    )
+                except OSError as e:
+                    logging.debug("signal frame failed: %s", e)
+                    break
 
+        # (4) keyboard -> frame n=0; Ctrl-D -> close frame n=0 (once)
+        if not channel_dead and sys.stdin in r:
+            got = sys.stdin.read(MAX_MUX_READ)
+            if got:
+                try:
+                    send_frame(p.stdin.fileno(), 0, True, got)
+                except OSError as e:
+                    logging.debug("stdin frame failed: %s", e)
+                    # the proxy is dying; its death wake (P17) ends the session
+            elif kbd_live:
+                try:
+                    send_frame(p.stdin.fileno(), 0, False)
+                except OSError as e:
+                    logging.debug("stdin close frame failed: %s", e)
+                kbd_live = False       # no longer read the TTY
 
-def main_remote():
-    set_proc_name("bombshell-client (remote) %s" % quotedargs())
-    global logging
-    logging = LoggingEmu("remote")
-
-    logging.info("Started with arguments: %s", quotedargs_ellipsized(sys.argv[1:]))
-
-    global debug_enabled
-    if "-d" in sys.argv[1:]:
-        debug_enabled = True
-        cmd = sys.argv[2]
-    else:
-        cmd = sys.argv[1]
-
-    cmd = pickle.loads(base64.b64decode(cmd))
-    logging.debug("Received command: %s", cmd)
-
-    nicecmd = " ".join(quote(a) for a in cmd)
-    try:
-        p = subprocess.Popen(
-            cmd,
-            #      ["strace", "-s4096", "-ff"] + cmd,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            close_fds=True,
-            bufsize=0,
-        )
-        send_confirmation(sys.stdout, 0, b"")
-    except OSError as e:
-        msg = "cannot execute %s: %s" % (nicecmd, e)
-        logging.error(msg)
-        send_confirmation(sys.stdout, 127, bytes(msg, "utf-8"))
-        sys.exit(0)
-    except BaseException as e:
-        msg = "cannot execute %s: %s" % (nicecmd, e)
-        logging.error(msg)
-        send_confirmation(sys.stdout, 126, bytes(msg, "utf-8"))
-        sys.exit(0)
-
-    signals_read, signals_written = pairofpipes()
-
-    signaler = Signaler(p, signals_read)
-    signaler.name = "remote signaler"
-    signaler.start()
-
-    demuxer = DataDemultiplexer(sys.stdin, [p.stdin, signals_written])
-    demuxer.name = "remote demultiplexer"
-    demuxer.start()
-
-    muxer = DataMultiplexer([p.stdout, p.stderr], sys.stdout)
-    muxer.name = "remote multiplexer"
-    muxer.start()
-
-    nicecmd_ellipsized = quotedargs_ellipsized(cmd)
-    logging.info("Started %s", nicecmd_ellipsized)
-
-    retval = p.wait()
-    logging.info("Return code %s for %s", retval, nicecmd_ellipsized)
-    muxer.join()
-    logging.info("Ending bombshell")
-    return retval
+    # P18 close-out: the remote's exit closed the channel, which ends the
+    # proxy; the returned status is the remote session status.
+    p.poll()
+    if p.returncode is None:
+        p.wait()
+    return p.returncode if p.returncode is not None else 1
 
 
 sys.stdin = openfdforread(sys.stdin.fileno())
 sys.stdout = openfdforappend(sys.stdout.fileno())
-if "__file__" in locals() and not ("-s" in sys.argv[1:2]):
-    sys.exit(main_master())
-else:
-    sys.exit(main_remote())
+
+
+def _main():
+    global logging
+    try:
+        if "__file__" in globals() and not ("-s" in sys.argv[1:2]):
+            return main_master()
+        return main_remote()
+    except SystemExit:
+        raise
+    except BaseException:
+        if logging is None:
+            logging = LoggingEmu("bootstrap")
+        logging.error("unhandled exception in the main loop")
+        logging.error("traceback: %s", traceback.format_exc())
+        return 1
+
+
+sys.exit(_main())
