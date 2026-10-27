@@ -34,6 +34,10 @@ import time
 PACKFORMAT = "!HbIx"
 PACKLEN = 8
 
+# psn: the exact command line a remote `ps` must show mid-session
+# (set_cmdline, spec section 9.k) instead of the entire embedded source.
+PSN_CLEAN = b"bombshell-client (remote) bash -c 'sleep 1'"
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BINARY = os.path.join(REPO_ROOT, "bin", "bombshell-client")
 
@@ -57,7 +61,7 @@ def frame(n, active, payload=b""):
     return struct.pack(PACKFORMAT, n, int(bool(active)), len(payload)) + payload
 
 
-def run(cmd, actions):
+def run(cmd, actions, argv=None, on_spawn=None):
     """Spawn the remote role and feed it the action list over the channel.
 
     Actions:
@@ -71,6 +75,11 @@ def run(cmd, actions):
                                      #  remote's next channel write EPIPEs
                                      #  (P10), but its stdin never sees EOF
 
+    `argv` is the full exec argv of the remote process (executable
+    included); the default is the `-s` file form.  `on_spawn(child)` is
+    called once, after Popen, with the live Popen -- the means by which
+    the psn case watches /proc/<pid>/cmdline mid-session.
+
     The channel is drained continuously while actions are pending  --  a real
     proxy never stops reading  --  so pipe buffers never wedge the session.
     Once the channel reads EOF (the remote exited), the case is done.
@@ -80,12 +89,16 @@ def run(cmd, actions):
     # channel stdin:  probe -> remote ;  channel stdout: remote -> probe
     r_in, w_in = os.pipe()
     r_out, w_out = os.pipe()
+    if argv is None:
+        argv = [sys.executable, "-u", BINARY, "-s", "-d", mk(cmd)]
     child = subprocess.Popen(
-        [sys.executable, "-u", BINARY, "-s", "-d", mk(cmd)],
+        argv,
         stdin=r_in,
         stdout=w_out,
         stderr=subprocess.DEVNULL,
     )
+    if on_spawn is not None:
+        on_spawn(child)
     os.close(r_in)
     os.close(w_out)
     ro = os.fdopen(r_out, "rb", 0)
@@ -294,10 +307,21 @@ CASES = {
         ["bash", "-c", "sleep 0.2; seq 1 40000; sleep 0.5"],
         [("sleep", 0.1), ("abort",)],
     ),
+    # psn: the command line a local `ps` sees on the remote stays short
+    # and clean (set_cmdline, spec section 9.k): the remote must be
+    # launched in the real bootstrap form -- `python -u -c '<entire
+    # source>' -d <b64>` (see run_case), the form in which the whole
+    # script is the argv  -- and, mid-session, /proc/<pid>/cmdline must
+    # read that session line, not the source.  The remote outlives the
+    # child so the driver gets a window in which to read the memory.
+    "psn": (
+        ["bash", "-c", "sleep 1"],
+        [("sleep", 1.1), ("eof",)],
+    ),
 }
 
 
-def check(name, rc, ret, frames, dt):
+def check(name, rc, ret, frames, dt, cmdline=None):
     """Per-case assertions from spec section 11.1 (mandatory)."""
     if name == "p10":
         # frames are None here: the driver's acc can be truncated mid-frame
@@ -360,6 +384,18 @@ def check(name, rc, ret, frames, dt):
         assert rc == 137, ("signal-killed child must report 128+9 (137), "
                            "got %s" % rc)
         assert dt < 2.0, ("child death must end the session fast: %.2f s" % dt)
+    if name == "psn":
+        # the remote's ps-visible command line must be the short session
+        # line, not the entire embedded source (set_cmdline, spec section
+        # 9.k): the launch form has thousands of source bytes; a clean
+        # line is exactly this one token
+        line = cmdline if cmdline is not None else b""
+        first = line.split(b"\x00", 1)[0]
+        assert first == PSN_CLEAN, \
+            ("remote ps must show the clean session line, got %r" % first[:80])
+        assert rc == 0, rc
+        assert dt < 2.0, ("psn must stay inside the incident budget: %.2f s"
+                          % dt)
 
 
 def run_case(name):
@@ -367,13 +403,43 @@ def run_case(name):
         known = ", ".join(sorted(CASES, key=lambda k: (len(k), k)))
         raise SystemExit("unknown case %r (known: %s)" % (name, known))
     cmd, actions = CASES[name]
+    cmdline = {"value": None}
     signal.signal(signal.SIGALRM, case_timeout)
     signal.alarm(CASE_TIMEOUT)
-    try:
-        rc, raw, dt = run(cmd, actions)
-    except TimeoutError as e:
-        print("%-4s  FAIL  %s" % (name, e))
-        return False
+    if name == "psn":
+        # launch in the REAL remote bootstrap form  --  `python -u -c
+        # '<entire source>' -d <b64>`  --  where the whole script IS the
+        # argv; set_cmdline (spec section 9.k) must slim it for a local
+        # ps.  on_spawn watches /proc/<pid>/cmdline mid-session.
+        def on_spawn(p, _l=cmdline):
+            got = b""
+            end = time.monotonic() + 2.0
+            while True:
+                try:
+                    with open("/proc/%d/cmdline" % p.pid, "rb") as f:
+                        got = f.read()
+                except OSError:
+                    break                    # remote gone; keep what we saw
+                if got.split(b"\x00", 1)[0] == PSN_CLEAN:
+                    _l["value"] = got
+                    return
+                if time.monotonic() >= end:
+                    break
+                time.sleep(0.05)
+            _l["value"] = got
+        source = open(BINARY, "r").read()
+        argv = [sys.executable, "-u", "-c", source, "-d", mk(cmd)]
+        try:
+            rc, raw, dt = run(cmd, actions, argv=argv, on_spawn=on_spawn)
+        except TimeoutError as e:
+            print("%-4s  FAIL  %s" % (name, e))
+            return False
+    else:
+        try:
+            rc, raw, dt = run(cmd, actions)
+        except TimeoutError as e:
+            print("%-4s  FAIL  %s" % (name, e))
+            return False
     if name == "p10":
         ret = struct.unpack("!H", bytes(raw[:2]))[0] if len(raw) >= 2 else None
         frames = None
@@ -381,7 +447,7 @@ def run_case(name):
         ret, frames_bytes = split_confirmation(raw)
         frames = parse_frames(frames_bytes)
     try:
-        check(name, rc, ret, frames, dt)
+        check(name, rc, ret, frames, dt, cmdline=cmdline["value"])
     except Exception as e:
         print("%-4s  FAIL  %s" % (name, e))
         sample = [(m, a, b[:16]) for m, a, b in frames[:8]] if frames else []
@@ -395,7 +461,7 @@ def run_case(name):
 
 def main(argv):
     names = argv or ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t7b",
-                     "tsig", "p10"]
+                     "tsig", "p10", "psn"]
     failed = []
     t0 = time.time()
     for name in names:

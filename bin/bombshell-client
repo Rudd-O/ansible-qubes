@@ -32,6 +32,143 @@ def set_proc_name(newname):
     libc.prctl(15, byref(buff), 0, 0, 0)
 
 
+_CMDLINE_ANCHOR = b"\x00-u\x00-c\x00"
+
+
+def _arg_range(data, anchor_pos, b64, has_d):
+    """Self-check the launch shape at `anchor_pos` (the byte after argv0
+    in `<argv0>\x00-u\x00-c\x00<source>\x00[-d\x00]<b64>\x00`); return
+    the argv span (arg_start, arg_end) as offsets into `data`, else None.
+    Every byte is checked against our own argv -- an env value can only
+    fake the anchor by carrying \x00-u\x00-c\x00 PLUS a token tail that
+    equals our session's b64 payload, which is not possible short of a
+    collision this wide."""
+    src_start = anchor_pos + len(_CMDLINE_ANCHOR)
+    src_end = data.find(b"\x00", src_start)
+    if src_end < 0 or src_end - src_start < 32:
+        return None
+    tok = src_end + 1
+    if has_d:
+        if data[tok:tok + 3] != b"-d\x00":
+            return None
+        tok += 3
+    if tok + len(b64) >= len(data):
+        return None               # tail cut by the read window: no verify
+    if data[tok:tok + len(b64)] != b64 or data[tok + len(b64)] != 0:
+        return None
+    # back-scan over argv0 (argv tokens never contain \x00); the byte
+    # below argv0 is the zero padding under the args region
+    p = anchor_pos - 1
+    while p >= 0 and data[p] != 0:
+        p -= 1
+    argv0 = bytes(data[p + 1:anchor_pos])
+    if not 1 <= len(argv0) <= 128 or any(c < 32 for c in argv0):
+        return None
+    return p + 1, tok + len(b64) + 1
+
+
+def set_cmdline(title):
+    """Rewrite /proc/self/cmdline in place, so that a local `ps` on the
+    remote shows one short, clean line (`title`) instead of the launch
+    form used to bootstrap the remote  --  the master's one-liner
+    `python -u -c '<whole source>' [-d] <b64>` (wire contract, spec
+    section 1.1), whose argv would print the entire script.
+    `set_proc_name` alone cannot do this: prctl(2) only sets the 15-byte
+    comm (top/htop/`ps -C`); `ps` prints the argv.
+
+    The kernel hands /proc/<pid>/cmdline the very memory range
+    (mm->arg_start..arg_end) built at exec and never updates it, so
+    writing a shorter argv into that range -- NUL-padded back to the
+    original size -- changes what `ps` shows without a re-exec,
+    touch-free to the wire and to the interpreter (sys.argv is
+    untouched; only the memory behind it changes).
+
+    The range is located by anchoring on the known launch shape in the
+    args region at the top of our own [stack] mapping and is
+    self-checked byte-for-byte (including our b64 payload) before
+    anything is written.  Any unexpected condition (layout not as
+    assumed, title too long for the range, platform without the
+    expected stack mapping) makes the rewrite silently no-op (debug
+    log): it is a display aid, never load-bearing -- the session
+    proceeds in all cases.
+    """
+    b64 = sys.argv[-1].encode("utf-8")
+    has_d = "-d" in sys.argv[1:-1]
+
+    log = logging
+    def say(fmt, *args):   # the module logging may be unconfigured here
+        if log is not None:
+            log.debug(fmt, *args)
+
+    try:
+        with open("/proc/self/maps") as maps:
+            for line in maps:
+                if line.rstrip().endswith("[stack]"):
+                    low, rest = line.split("-", 1)
+                    map_low = int(low, 16)
+                    map_end = int(rest.split()[0], 16)
+                    break
+            else:
+                say("set_cmdline: no [stack] mapping; skip")
+                return False
+    except (OSError, ValueError) as e:
+        say("set_cmdline: cannot read /proc/self/maps: %s", e)
+        return False
+
+    window = min(map_end - map_low, 1 << 22)
+    try:
+        with open("/proc/self/mem", "rb") as mem:
+            mem.seek(map_end - window)
+            data = mem.read(window)
+    except (OSError, ValueError) as e:
+        say("set_cmdline: cannot read the stack: %s", e)
+        return False
+    if len(data) != window:
+        say("set_cmdline: short stack read (%d); skip", len(data))
+        return False
+    base = map_end - window
+
+    a = data.find(_CMDLINE_ANCHOR)
+    span = None
+    while a >= 0:
+        span = _arg_range(data, a, b64, has_d)
+        if span is not None:
+            break
+        a = data.find(_CMDLINE_ANCHOR, a + 1)
+    if span is None:
+        # the -s launch forms (local probe drives) carry no -c at all; a
+        # miss also covers platforms that lay the args out elsewhere
+        say("set_cmdline: launch shape not found on the stack; skip")
+        return False
+    arg_start, arg_end = span
+
+    new = (title + "\x00").encode("utf-8")
+    total = arg_end - arg_start
+    if len(new) > total:
+        say("set_cmdline: title (%d) will not fit the argv range (%d); "
+            "skip", len(new), total)
+        return False
+    new += b"\x00" * (total - len(new))
+    try:
+        with open("/proc/self/mem", "r+b") as mem:
+            mem.seek(base + arg_start)
+            mem.write(new)
+    except OSError as e:
+        say("set_cmdline: cannot write the stack: %s", e)
+        return False
+    try:
+        with open("/proc/self/cmdline", "rb") as f:
+            got = f.read().split(b"\x00", 1)[0]
+    except OSError as e:
+        say("set_cmdline: readback failed: %s", e)
+        return False
+    if got != new.split(b"\x00", 1)[0]:
+        say("set_cmdline: readback mismatch: %r", got[:60])
+        return False
+    say("set_cmdline: argv range (%d B) now reads: %r", total, got)
+    return True
+
+
 def unset_cloexec(fd):
     old = fcntl.fcntl(fd, fcntl.F_GETFD)
     fcntl.fcntl(fd, fcntl.F_SETFD, old & ~fcntl.FD_CLOEXEC)
@@ -210,6 +347,15 @@ def main_remote():
     logging.debug("Received command: %s", cmd)
 
     nicecmd = quotedargs_ellipsized(cmd)
+
+    # The remote lives under its whole launch form (`python -u -c
+    # '<entire source>' [-d] <b64>`, spec section 1.1), so the local `ps`
+    # would print the entire script as its command line.  Shrink the
+    # argv a ps sees to the session line (set_cmdline, spec section
+    # 9.k: rewritten in place, every byte self-checked, silent no-op on
+    # any miss)  --  the wire, the confirmation and sys.argv themselves
+    # are untouched.
+    set_cmdline("bombshell-client (remote) %s" % nicecmd)
 
     # SIGCHLD self-pipe, wired before Popen (spec section 4.5 invariant 1): a child
     # that dies at exec must still wake the loop. The handler writes one

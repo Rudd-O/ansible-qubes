@@ -1,10 +1,12 @@
 # Threadless rewrite of `bin/bombshell-client` — implementation specification
 
 Status: **implemented and verified (2026-10-23)**. The port described below is in
-`bin/bombshell-client` (589 lines, threadless) and the test suites under `tests/` are
-green — local 15/15 (`probe.py`, including the `tsig` status-convention pin and the
-`p10` channel-loss regression case, plus `master_probe.py`), Qubes matrix vs a
-disposable VM (18/18 at the port, status expectations since strict on 130/137 per
+`bin/bombshell-client` (threadless) and the test suites under `tests/` are
+green — local 16/16 (`probe.py`, including the `tsig` status-convention pin,
+the `p10` channel-loss regression case, and the 2026-10-26 `psn` command-line
+case, plus `master_probe.py`), Qubes matrix vs a
+disposable VM (18/18 at the port; +1 case `T8e` added 2026-10-26, status
+expectations since strict on 130/137 per
 the §11.2 status convention)
 (`make test` / `make test-qubes VM=<vm>`). Observed deviations are recorded where
 they bite an expectation (the §11.2 notes, the `tests/qubes_probe.py` header); the
@@ -441,6 +443,17 @@ Instalation stays **after** the confirmation phase, matching the current order
    unchanged; set up `LoggingEmu("remote")` (426);
 2. arg parse: with `-d`: `cmd_b64 = sys.argv[2]`, else `sys.argv[1]` (431–435);
    `cmd = pickle.loads(base64.b64decode(cmd_b64))` (437);
+2b. **`set_cmdline("bombshell-client (remote) %s" % nicecmd)`** (added 2026-10-26,
+   §9.k): rewrites the *command line visible to `ps`* — the remote arrives under
+   its whole launch form (`python -u -c '<entire source>' [-d] <b64>`, so the argv
+   would print the entire script). The kernel's `/proc/<pid>/cmdline` reads the
+   argv memory range built at exec and never updates it, so the function overwrites
+   that range in place: shorter argv, NUL-padded to the original size, located by
+   anchoring the launch shape on the top of the process's own `[stack]` mapping and
+   self-checked byte-for-byte (including the b64 tail) before any write; `sys.argv`
+   itself is untouched, the wire is untouched, and any miss (layout, fit, platform)
+   is a logged silent no-op. On the `-s` launch forms (local probe drives) it is a
+   structural no-op: the anchor is absent;
 3. **wire the death pipe — before `Popen`** (§4.5 invariants 1/3);
 4. `Popen(cmd, stdin=PIPE, stdout=PIPE, stderr=PIPE, start_new_session=True,
    close_fds=True, bufsize=0)` — **`start_new_session=True` is new** (line 442–450 gains
@@ -892,6 +905,19 @@ j. **A channel write failure is bounded (P10).** If the remote's send to the cha
    fails (peer aborted, EPIPE), the remote sets a *per-wake* `channel_dead`, stops
    framing into the dead channel, and the session still ends on the next wake via P5
    or P6 — it does not spin (regression case: local `p10`, §11.1).
+k. **A clean `ps` command line on the remote (added 2026-10-26, `set_cmdline`,
+   §5.1 step 2b).** On the target VM, a `ps` mid-session now shows
+   `bombshell-client (remote) <command>` (the command, quoted at most 80 chars)
+   instead of `python3 -u -c '<entire client source>' [-d] <b64>`, whose argv
+   carried the whole script. The rewrite is an in-place write into the kernel's
+   never-updated `/proc/<pid>/cmdline` range, self-checked before writing and a
+   logged silent no-op on any miss: the wire, the confirmation handshake and
+   `sys.argv` are untouched, master↔remote interop is as before, and no other end
+   is affected. (The 15-byte `comm` set by `set_proc_name` was never enough: `ps`
+   prints the argv, `top`/`htop`/`ps -C` print the comm — both now live. Consequence
+   for operators of the Qubes matrix: the session's b64 payload is no longer
+   greppable in the remote's `ps`; `T15` attaches strace from the rewritten title
+   instead, and `T8e` asserts the clean line directly.)
 
 ### 9.2 No `killpg` (decision 2026-10-22 — recorded; not a toggle)
 
@@ -923,6 +949,7 @@ in that setting. When the pty work returns to session cleanup, revisit in one pa
                         subprocess, sys, syslog, time, traceback, shlex.quote
  N   MAX_MUX_READ / PACKLEN / PACKFORMAT   (29–31, unchanged values)
     set_proc_name / unset_cloexec / openfdforappend / openfdforread      (kept)
+    _CMDLINE_ANCHOR / _arg_range / set_cmdline                           (2026-10-26, §9.k)
     debug_enabled / _startt / LoggingEmu (single thread, §8)
     send_confirmation                                                        (kept)
     read_exact / write_all_file / writev_all / send_frame                    (§4)
@@ -983,18 +1010,27 @@ with the child's status (the stream drains to EOF, the child exits, P5 wins) —
 spin in the `channel_dead` guard. `tests/probe.py` runs it; its 30 s watchdog proves the
 "never" half (an unfixed build hangs until it fires).
 
+Supplementary local case **psn** (the §9.k command-line contract, added 2026-10-26):
+the only case launched in the *real* remote bootstrap form (`python -u -c '<entire
+source>' -d <b64>` — the form in which the whole script is the argv), with
+`bash -c 'sleep 1'` and actions `sleep 1.1 s, eof`. Expected: rc 0 (the child's status
+wins, §5.2 P5), **< 2 s**, and — read from `/proc/<pid>/cmdline` while the session is
+live (the driver's `on_spawn` hook watches the remote) — the command line is exactly
+`bombshell-client (remote) bash -c 'sleep 1'`, not the multi-KB launch form.
+`tests/probe.py` runs it.
+
 ### 11.2 Qubes matrix
 
 | # | Scenario | Pass criterion |
 |---|---|---|
-| T8 **the incident** | `bombshell-client <vm> bash`, then in the shell: `tail -F /var/log/messages &` then `exit` | (a) the master prompt returns in **< 2 s** with status 0; (b) the next session is clean; (c) `ps` in `<vm>`: `tail` still present (orphaned — no killpg, §9.2) and *no* zombie `bombshell-client.remote` on the remote (its process has exited); (d) remote syslog shows only clean "child exited, status 0", no traceback, no "exiting program" |
+| T8 **the incident** | `bombshell-client <vm> bash`, then in the shell: `tail -F /var/log/messages &` then `exit` | (a) the master prompt returns in **< 2 s** with status 0; (b) the next session is clean; (c) `ps` in `<vm>`: `tail` still present (orphaned — no killpg, §9.2) and *no* zombie `bombshell-client.remote` on the remote (its process has exited); (d) remote syslog shows only clean "child exited, status 0", no traceback, no "exiting program"; **and, with a second session kept alive mid-flight (added 2026-10-26, T8e): (e) `ps` on `<vm>` shows the remote as `bombshell-client (remote) <command>` — the clean session line, never the multi-KB `python -c` form (§9.k)** |
 | T9 **status fidelity** | `bombshell-client <vm> 'exit 42'`, `'kill -9 $$'`, and a command with `bash -c 'true'` | master rc = 42, 137, 0 respectively → proves the remote→proxy→master status flow (§3.4). If this fails, document qrexec proxy status propagation first, before treating it as a bug in the port |
 | T10 **proxy kill mid-session** | `bombshell-client <vm> 'sleep 300'`; then from a second terminal `kill -9 $(pidof qrexec-client-vm)` | master returns 137 in < 2 s; `sleep` stays in `<vm>` (orphan — no killpg, §9.2); remote syslog: "channel closed, child still alive" |
 | T11 **streams big** | `bombshell-client <vm> 'head -c 10485760 /dev/zero \| tr "\0" a'` | 10 MiB received exactly; stdout/stderr identity; no hangs (the 128 KiB `MAX_MUX_READ` chunking makes this cross many frame boundaries) |
 | T12 **Ctrl-D** | `bombshell-client <vm> bash`, then Ctrl-D at the prompt | remote bash sees EOF, the session ends, master returns bash's status (usually 0), < 2 s |
 | T13 **Ctrl-C** | `bombshell-client <vm> bash`; in-session: `sleep 300 &`, then Ctrl-C | The kernel routes the TTY's SIGINT to the *master*, not to the remote child, so only P14→P11 can deliver it. Pass: remote bash dies with ~130, master rc ≈ 130, and `ps` in the VM shows the background `sleep` still present (orphan — no killpg, §9.2) |
 | T14 **stream separation** | `bombshell-client <vm> 'bash -c "echo A; echo B >&2; echo C"'` | A, C on the master's stdout; B on the master's stderr — not jumbled |
-| T15 **end is waitable** (smoking gun of the design) | run T8 with `strace -f` on the remote | the remote `bombshell-client` is at no point in a polling loop: during the session it blocks only in `pselect/select`; there is *no* thread and no repeating `waitpid` — exactly one `select` of the four fds, and one `waitpid(pid, WNOHANG)` at child death |
+| T15 **end is waitable** (smoking gun of the design) | run T8 with `strace -f` on the remote | the remote `bombshell-client` is at no point in a polling loop: during the session it blocks only in `pselect/select`; there is *no* thread and no repeating `waitpid` — exactly one `select` of the four fds, and one `waitpid(pid, WNOHANG)` at child death. **Remote process identification (updated 2026-10-26): the strace target is located by the rewritten command line (§9.k) — the session's b64 payload no longer survives in `ps` after `set_cmdline`, so the matrix greps the clean title assembled from non-adjacent parts to keep the observing session from matching itself** |
 
 **Status convention (affects T9, T10 and T13).** Where the waited process dies
 *by signal*, the CPython wait status is negative (−signum).  The implementation

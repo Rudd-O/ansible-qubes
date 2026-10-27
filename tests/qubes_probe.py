@@ -227,6 +227,35 @@ def t8_incident():
     case("T8c orphan+no-zombie", tail_live and nzombies == 0,
          "tail_live=%s zombies=%s" % (tail_live, nzombies))
 
+    # T8e: a ps on the VM mid-session must show the clean remote command
+    # line (set_cmdline, spec section 9.k), not the remote's multi-KB
+    # launch form.  The keep-alive session's command is quoted as
+    # 'sleep 2.5' in its title.  The scan needs two self-match defenses
+    # (Qubes run 2026-10-26 made both bite): the search string is
+    # assembled at RUNTIME from non-adjacent parts so this session's
+    # own rewritten title (which carries this script's text) cannot
+    # match; and the scan reads /proc/*/cmdline directly instead of
+    # piping through ps|grep -- grep's own cmdline always contains the
+    # pattern as argv, so a pipeline self-match is structural.  The
+    # only children spawned are `tr` (argv carries no pattern).
+    p_ka = start_session(["bash", "-c", "sleep 2.5"],
+                         keep_stdin_open=True)
+    wait_for_confirmation_done(p_ka)
+    _, pso, _ = drain_session(["bash", "-c",
+                               "a='bombshell-client (remote) bash -c '\n"
+                               "b=\"'sleep 2.5'\"\n"
+                               "for f in /proc/[0-9]*/cmdline; do\n"
+                               "  [ -r \"$f\" ] || continue\n"
+                               "  t=$(tr '\\0' ' ' < \"$f\")\n"
+                               "  case \"$t\" in *\"${a}${b}\"*)\n"
+                               "    printf '%s\\n' \"$t\" | cut -c1-100\n"
+                               "  esac\n"
+                               "done"])
+    p_ka_rc, _, _ = harvest(p_ka)
+    ok = (b"bombshell-client (remote) bash -c 'sleep 2.5'" in pso
+          and p_ka_rc == 0)
+    case("T8e ps-shows-clean-cmdline", ok, "ps=%r" % pso[:80])
+
     anchor = base64.b64encode(pickle.dumps(["bash"], 2)).decode("ascii")
     found, scope = journal_scope(anchor)
     exit_line = any("child exited, status 0" in l for l in scope)
@@ -334,14 +363,15 @@ def t15_waitable():
     at status 7, and nothing else is waited on (spec section 11.2
     T15: the remote is at no point in a polling loop).
 
-    The remote Python is identified by its base64 command payload
-    (unique to this session) in its /proc cmdline.  strace runs WITHOUT
+    The remote Python is identified in its /proc cmdline by this
+    session's command text  --  NOT by its b64 payload, which the
+    rewritten command line (set_cmdline, spec section 9.k) no longer
+    carries in ps.  The search string is assembled from parts at
+    runtime so this script does not match its OWN session (whose
+    rewritten title contains this script's text).  strace runs WITHOUT
     -f: only the Python itself is traced, never its child.
     """
     mark_src = "%s" % hashlib.sha256(str(time.time_ns()).encode()).hexdigest()[:8]
-    b64 = base64.b64encode(
-        pickle.dumps(["bash", "-c", "echo mark-%s; sleep 4; exit 7" % mark_src], 2))
-    mark = b64.decode("ascii")
     p = start_session(["bash", "-c",
                        "echo mark-%s; sleep 4; exit 7" % mark_src],
                       keep_stdin_open=True)
@@ -349,9 +379,11 @@ def t15_waitable():
     time.sleep(1.2)
 
     script = (
-        "b64='" + mark + "'\n"
-        "pid=$(ps -eo pid,args -ww | grep -F $b64 | "
-        "awk '$2 ~ /python3$/ {print $1; exit}')\n"
+        "s1='bombshell-client (remote) bash -c '\n"
+        "s2=\"'echo mark-\"\n"
+        "s3='%s'\n"
+        "pid=$(ps -eo pid,args -ww "
+        "| grep -F \"$s1$s2$s3\" | awk '{print $1; exit}')\n"
         "if [ -z \"$pid\" ]; then echo NO_PID; exit 1; fi\n"
         "echo PID=$pid\n"
         "strace -p $pid -o /tmp/bs.strace "
@@ -360,14 +392,14 @@ def t15_waitable():
         "echo TRACE_DUMP\n"
         "cat /tmp/bs.strace 2>/dev/null\n"
         "echo TRACE_EOF\n"
-    )
+    ) % mark_src
     sp = start_session(["bash", "-c", script], keep_stdin_open=True)
     rc, spout, _ = harvest(sp, deadline=30)
     rc_a, aout, _ = harvest(p, deadline=30)
     case("T15 session-status", rc_a == 7, "session-A rc=%s" % rc_a)
 
     if b"NO_PID" in spout:
-        case("T15 remote-found", False, "remote python not found by b64")
+        case("T15 remote-found", False, "remote python not found by title")
         case("T15 wait-nohang", False, "skipped (no remote pid)")
         case("T15 select-four-fds", False, "skipped (no remote pid)")
         return
