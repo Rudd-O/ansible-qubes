@@ -1,5 +1,9 @@
 #!/usr/bin/python3 -u
 
+import time
+
+_startt = time.time()
+
 import base64
 import errno
 import fcntl
@@ -11,7 +15,6 @@ import struct
 import subprocess
 import sys
 import syslog
-import time
 import traceback
 from shlex import quote
 
@@ -33,6 +36,8 @@ def set_proc_name(newname):
 
 
 _CMDLINE_ANCHOR = b"\x00-u\x00-c\x00"
+debug_enabled = False
+logging = None
 
 
 def _arg_range(data, anchor_pos, b64, has_d):
@@ -49,19 +54,19 @@ def _arg_range(data, anchor_pos, b64, has_d):
         return None
     tok = src_end + 1
     if has_d:
-        if data[tok:tok + 3] != b"-d\x00":
+        if data[tok : tok + 3] != b"-d\x00":
             return None
         tok += 3
     if tok + len(b64) >= len(data):
-        return None               # tail cut by the read window: no verify
-    if data[tok:tok + len(b64)] != b64 or data[tok + len(b64)] != 0:
+        return None  # tail cut by the read window: no verify
+    if data[tok : tok + len(b64)] != b64 or data[tok + len(b64)] != 0:
         return None
     # back-scan over argv0 (argv tokens never contain \x00); the byte
     # below argv0 is the zero padding under the args region
     p = anchor_pos - 1
     while p >= 0 and data[p] != 0:
         p -= 1
-    argv0 = bytes(data[p + 1:anchor_pos])
+    argv0 = bytes(data[p + 1 : anchor_pos])
     if not 1 <= len(argv0) <= 128 or any(c < 32 for c in argv0):
         return None
     return p + 1, tok + len(b64) + 1
@@ -95,11 +100,6 @@ def set_cmdline(title):
     b64 = sys.argv[-1].encode("utf-8")
     has_d = "-d" in sys.argv[1:-1]
 
-    log = logging
-    def say(fmt, *args):   # the module logging may be unconfigured here
-        if log is not None:
-            log.debug(fmt, *args)
-
     try:
         with open("/proc/self/maps") as maps:
             for line in maps:
@@ -109,10 +109,10 @@ def set_cmdline(title):
                     map_end = int(rest.split()[0], 16)
                     break
             else:
-                say("set_cmdline: no [stack] mapping; skip")
+                logging.debug("set_cmdline: no [stack] mapping; skip")
                 return False
     except (OSError, ValueError) as e:
-        say("set_cmdline: cannot read /proc/self/maps: %s", e)
+        logging.debug("set_cmdline: cannot read /proc/self/maps: %s", e)
         return False
 
     window = min(map_end - map_low, 1 << 22)
@@ -121,10 +121,10 @@ def set_cmdline(title):
             mem.seek(map_end - window)
             data = mem.read(window)
     except (OSError, ValueError) as e:
-        say("set_cmdline: cannot read the stack: %s", e)
+        logging.debug("set_cmdline: cannot read the stack: %s", e)
         return False
     if len(data) != window:
-        say("set_cmdline: short stack read (%d); skip", len(data))
+        logging.debug("set_cmdline: short stack read (%d); skip", len(data))
         return False
     base = map_end - window
 
@@ -138,15 +138,18 @@ def set_cmdline(title):
     if span is None:
         # the -s launch forms (local probe drives) carry no -c at all; a
         # miss also covers platforms that lay the args out elsewhere
-        say("set_cmdline: launch shape not found on the stack; skip")
+        logging.debug("set_cmdline: launch shape not found on the stack; skip")
         return False
     arg_start, arg_end = span
 
     new = (title + "\x00").encode("utf-8")
     total = arg_end - arg_start
     if len(new) > total:
-        say("set_cmdline: title (%d) will not fit the argv range (%d); "
-            "skip", len(new), total)
+        logging.debug(
+            "set_cmdline: title (%d) will not fit the argv range (%d); skip",
+            len(new),
+            total,
+        )
         return False
     new += b"\x00" * (total - len(new))
     try:
@@ -154,18 +157,18 @@ def set_cmdline(title):
             mem.seek(base + arg_start)
             mem.write(new)
     except OSError as e:
-        say("set_cmdline: cannot write the stack: %s", e)
+        logging.debug("set_cmdline: cannot write the stack: %s", e)
         return False
     try:
         with open("/proc/self/cmdline", "rb") as f:
             got = f.read().split(b"\x00", 1)[0]
     except OSError as e:
-        say("set_cmdline: readback failed: %s", e)
+        logging.debug("set_cmdline: readback failed: %s", e)
         return False
     if got != new.split(b"\x00", 1)[0]:
-        say("set_cmdline: readback mismatch: %r", got[:60])
+        logging.debug("set_cmdline: readback mismatch: %r", got[:60])
         return False
-    say("set_cmdline: argv range (%d B) now reads: %r", total, got)
+    logging.debug("set_cmdline: argv range (%d B) now reads: %r", total, got)
     return True
 
 
@@ -190,10 +193,6 @@ def openfdforread(fd):
     f = os.fdopen(fd, "rb", 0)
     unset_cloexec(f.fileno())
     return f
-
-
-debug_enabled = False
-_startt = time.time()
 
 
 class LoggingEmu:
@@ -223,9 +222,6 @@ class LoggingEmu:
             prio,
             ("%.3f  " % deltat) + self.prefix + ": " + string,
         )
-
-
-logging = None
 
 
 def send_confirmation(chan, retval, errmsg):
@@ -343,7 +339,11 @@ def main_remote():
         debug_enabled = True
     cmd_b64 = sys.argv[-1]
 
-    cmd = pickle.loads(base64.b64decode(cmd_b64))
+    try:
+        cmd = pickle.loads(base64.b64decode(cmd_b64))
+    except Exception as e:
+        logging.error("Cannot decode command from remote side: %s", e)
+        return 125
     logging.debug("Received command: %s", cmd)
 
     nicecmd = quotedargs_ellipsized(cmd)
@@ -395,21 +395,19 @@ def main_remote():
 
     logging.info("Started %s", nicecmd)
 
-    # The single loop: exactly four uniformly-ready sources per round  -- 
+    # The single loop: exactly four uniformly-ready sources per round  --
     # channel (sys.stdin), child stdout, child stderr, death pipe.
     # No timeout, no per-wake reaping probe: the death byte is the
     # waitable end-of-session (spec section 7.5.2).
-    live_out = {0: p.stdout, 1: p.stderr}    # outward frames: 0=stdout, 1=stderr
-    stdin_open = True                        # inward stream 0's sink (child stdin)
-    acc = bytearray()                        # frame accumulator: short reads impossible
-    buf = bytearray(MAX_MUX_READ)            # scratch for readinto
+    live_out = {0: p.stdout, 1: p.stderr}  # outward frames: 0=stdout, 1=stderr
+    stdin_open = True  # inward stream 0's sink (child stdin)
+    acc = bytearray()  # frame accumulator: short reads impossible
+    buf = bytearray(MAX_MUX_READ)  # scratch for readinto
     chan_out = sys.stdout.fileno()
     channel_dead = False
 
     while True:
-        r = select.select(
-            [sys.stdin, chld_rd] + list(live_out.values()), [], []
-        )[0]
+        r = select.select([sys.stdin, chld_rd] + list(live_out.values()), [], [])[0]
         # (after both close frames: [sys.stdin, chld_rd]  --  still meaningful,
         # still bounded: the child either dies (P5), or the peer goes (P6).)
         # channel_dead is per-wake (spec section 5.2, note 1): once set by a
@@ -424,7 +422,7 @@ def main_remote():
             if src is None or src not in r:
                 continue
             have = src.readinto(buf)
-            if have == 0:                                  # EOF: close frame, once
+            if have == 0:  # EOF: close frame, once
                 src.close()
                 del live_out[n]
                 try:
@@ -433,40 +431,40 @@ def main_remote():
                     logging.error("can't close stream %d frame: %s", n, e)
                     channel_dead = True
                     break
-            else:                                          # data: framed writev
+            else:  # data: framed writev
                 try:
                     send_frame(chan_out, n, True, memoryview(buf)[:have])
-                except OSError as e:                       # P10
+                except OSError as e:  # P10
                     logging.error("channel write failed: %s", e)
                     channel_dead = True
                     break
 
         # (3) child death  --  the waitable end-of-session; reaping is once, here.
         if not channel_dead and chld_rd in r:
-            os.read(chld_rd, 64)                           # drains the wake byte(s)
-            p.poll()                                       # = waitpid(WNOHANG)
+            os.read(chld_rd, 64)  # drains the wake byte(s)
+            p.poll()  # = waitpid(WNOHANG)
             rc = p.returncode
             logging.info("child exited, status %s", rc)
             # No group kill: grand-children are orphaned; they EPIPE at
             # their next write or linger  --  accepted (spec section 9.2).
-            return rc if rc is not None else 1             # ABANDON: no drain
+            return rc if rc is not None else 1  # ABANDON: no drain
 
         # (4) channel input  --  last; any keystroke in the fatal wake is
         # never framed (spec section 9.1 g)
         if not channel_dead and sys.stdin in r:
             chunk = sys.stdin.read(MAX_MUX_READ)
-            if not chunk:                                  # P6: channel EOF
+            if not chunk:  # P6: channel EOF
                 logging.error("channel closed, child still alive")
-                return 1                                   # child orphaned
+                return 1  # child orphaned
             acc += chunk
             while len(acc) >= PACKLEN:
                 n, active, ln = struct.unpack(PACKFORMAT, acc[:PACKLEN])
                 need = PACKLEN + (0 if not active else ln)
                 if len(acc) < need:
-                    break                                  # partial body: wait
+                    break  # partial body: wait
                 body = bytes(acc[PACKLEN:need])
                 del acc[:need]
-                if not active:                             # P7/P8: close frame
+                if not active:  # P7/P8: close frame
                     if n == 0 and stdin_open:
                         p.stdin.close()
                         stdin_open = False
@@ -474,7 +472,7 @@ def main_remote():
                     # n==1 close has nothing to close (signals are stateless);
                     # repeated closes are no-ops, never errors
                     continue
-                if n == 0:                                 # P9: keyboard input
+                if n == 0:  # P9: keyboard input
                     if stdin_open:
                         try:
                             write_all_file(p.stdin, body)
@@ -486,12 +484,10 @@ def main_remote():
                             stdin_open = False
                     # a stream-0 frame with stdin closed is dropped, never
                     # an error
-                elif n == 1:                               # P11: relayed signal
+                elif n == 1:  # P11: relayed signal
                     for i in range(0, len(body) - 1, 2):
                         try:
-                            p.send_signal(
-                                struct.unpack("!H", body[i:i + 2])[0]
-                            )
+                            p.send_signal(struct.unpack("!H", body[i : i + 2])[0])
                         except OSError as e:
                             logging.debug("signal delivery failed: %s", e)
     # Only P5 (child death) and P6 (channel EOF) end the loop  --  both by return.
@@ -579,7 +575,7 @@ def main_master():
                     if len(conf) >= 6:
                         ln = struct.unpack("!I", bytes(conf[2:6]))[0]
                         if len(conf) >= 6 + ln:
-                            errmsg = bytes(conf[6:6 + ln])
+                            errmsg = bytes(conf[6 : 6 + ln])
                             if code != 0:
                                 logging.error(
                                     "remote: %s", errmsg.decode("utf-8", "replace")
@@ -609,15 +605,14 @@ def main_master():
 
     # The session loop: four uniformly-ready sources per round  --  proxy
     # stdout, user TTY (while it is live), signal pipe, death pipe.
-    in_live = {0: sys.stdout, 1: saved_stderr}   # channel frame n -> local sink
-    kbd_live = True                             # TTY stream 0 still readable
-    acc = bytearray()                           # receiver accumulator
+    in_live = {0: sys.stdout, 1: saved_stderr}  # channel frame n -> local sink
+    kbd_live = True  # TTY stream 0 still readable
+    acc = bytearray()  # receiver accumulator
     channel_dead = False
 
     while True:
         r = select.select(
-            [p.stdout] + ([sys.stdin] if kbd_live else []) + [sig_rd, chld_rd],
-            [], []
+            [p.stdout] + ([sys.stdin] if kbd_live else []) + [sig_rd, chld_rd], [], []
         )[0]
 
         # (1) channel demux first  --  final lines arrive before any end (spec section 7.5.3)
@@ -629,27 +624,27 @@ def main_master():
                 n, active, ln = struct.unpack(PACKFORMAT, acc[:PACKLEN])
                 need = PACKLEN + (0 if not active else ln)
                 if len(acc) < need:
-                    break                                 # partial body: wait
+                    break  # partial body: wait
                 body = bytes(acc[PACKLEN:need])
                 del acc[:need]
                 sink = in_live.get(n)
                 if sink is None:
-                    continue        # sink already dropped: a no-op, never an error
-                if active:                       # P15
+                    continue  # sink already dropped: a no-op, never an error
+                if active:  # P15
                     try:
                         write_all_file(sink, body)
                     except OSError as e:
                         logging.debug("local sink %d dead: %s", n, e)
                         sink.close()
-                        del in_live[n]            # sink EPIPE: drop, continue
-                else:                            # P16
+                        del in_live[n]  # sink EPIPE: drop, continue
+                else:  # P16
                     logging.debug("remote closed stream %d", n)
                     sink.close()
                     del in_live[n]
-            if not got:                          # P18: channel EOF
+            if not got:  # P18: channel EOF
                 logging.debug("channel EOF")
                 channel_dead = True
-                break             # any remainder in acc was delivered above
+                break  # any remainder in acc was delivered above
 
         # (2) proxy death  --  the master's session-end detector; reaping is once
         if not channel_dead and chld_rd in r:
@@ -664,9 +659,7 @@ def main_master():
             data = os.read(sig_rd, 64)
             for b in data:
                 try:
-                    send_frame(
-                        p.stdin.fileno(), 1, True, struct.pack("!H", b)
-                    )
+                    send_frame(p.stdin.fileno(), 1, True, struct.pack("!H", b))
                 except OSError as e:
                     logging.debug("signal frame failed: %s", e)
                     break
@@ -685,7 +678,7 @@ def main_master():
                     send_frame(p.stdin.fileno(), 0, False)
                 except OSError as e:
                     logging.debug("stdin close frame failed: %s", e)
-                kbd_live = False       # no longer read the TTY
+                kbd_live = False  # no longer read the TTY
 
     # P18 close-out: the remote's exit closed the channel, which ends the
     # proxy; the returned status is the remote session status.
