@@ -51,7 +51,7 @@ loop with no threads**. Process termination is a *waitable* event (SIGCHLD self-
 | Invariant | Detail |
 |---|---|
 | Wire format | `MAX_MUX_READ = 128*1024` (line 29), `PACKLEN = 8` (30), `PACKFORMAT = "!HbIx"` (31) — values byte-identical; no new frame `active` values. |
-| Bootstrap | helper-text one-liner streamed into `qubes.VMShell` (lines 347–362); `base64(pickle(command))` payload; unframed confirmation `!H` ret + `!I` len + msg (lines 110–122 / 125–140) — byte-identical. |
+| Bootstrap | helper-text one-liner streamed into `qubes.VMShell` (lines 347–362); `base64(json(command))` payload (2026-10-27: `pickle` → `json` — the payload is exactly a str list; JSON is its lossless carrier and `json.loads` has no way to execute anything, whereas `pickle.loads` did; the remote verifies the strict list-of-str shape before `Popen`, so mixed-version payloads now fail cleanly with 125); unframed confirmation `!H` ret + `!I` len + msg (lines 110–122 / 125–140) — shape byte-identical. |
 | Stream numbering | master→remote #0 = user keyboard, #1 = relayed signals; remote→master #0 = child stdout, #1 = child stderr (normative table, §2.2). The producer/consumer list **order** fixes the numbers — keep two-element lists in the same order everywhere. |
 | CLI & dispatch | `bombshell-client [-d] <vm> <cmd...>`; the `__file__`/`-s` dispatch guard (line 489); remote argv layout (`-u -c` text, optional `-d`, b64 command). |
 | Process names | `set_proc_name()` outputs (lines 331, 424) stay recognizable. |
@@ -442,7 +442,10 @@ Instalation stays **after** the confirmation phase, matching the current order
 1. `set_proc_name("bombshell-client (remote) %s" % quotedargs())` (line 424) —
    unchanged; set up `LoggingEmu("remote")` (426);
 2. arg parse: with `-d`: `cmd_b64 = sys.argv[2]`, else `sys.argv[1]` (431–435);
-   `cmd = pickle.loads(base64.b64decode(cmd_b64))` (437);
+   `cmd = json.loads(base64.b64decode(cmd_b64))` (437) plus the
+   **2026-10-27 shape check**: the payload must be strictly a list of
+   `str` — everything else (including a stale pickle payload from a
+   mixed-version endpoint) is refused before `Popen` with 125;
 2b. **`set_cmdline("bombshell-client (remote) %s" % nicecmd)`** (added 2026-10-26,
    §9.k): rewrites the *command line visible to `ps`* — the remote arrives under
    its whole launch form (`python -u -c '<entire source>' [-d] <b64>`, so the argv
@@ -945,7 +948,7 @@ in that setting. When the pty work returns to session cleanup, revisit in one pa
 
 ```
  1   #!/usr/bin/python3 -u
-    imports (py3-only): base64, errno, fcntl, os, pickle, select, signal, struct,
+    imports (py3-only): base64, errno, fcntl, json, os, select, signal, struct,
                         subprocess, sys, syslog, time, traceback, shlex.quote
  N   MAX_MUX_READ / PACKLEN / PACKFORMAT   (29–31, unchanged values)
     set_proc_name / unset_cloexec / openfdforappend / openfdforread      (kept)
@@ -971,7 +974,7 @@ no configuration; starts with shebang, ends with `sys.exit(...)`.
 ### 11.1 Local tests (no Qubes needed) — remote end via `-s -d`
 
 The remote role can be driven entirely by pipe pairs: launch
-`python3 -u bin/bombshell-client -s -d <b64(pickle(cmd))>` with its stdin/stdout
+`python3 -u bin/bombshell-client -s -d <b64(json(cmd))>` with its stdin/stdout
 connected to pipes, inject frames on stdin, read frames from stdout, then close the
 channel to end. The driver adopted for this, `tests/probe.py` (appendix A is the
 reference it was written from), implements `run(cmd, actions) -> (rc, frames_bytes, elapsed_s)`:
@@ -1019,6 +1022,22 @@ live (the driver's `on_spawn` hook watches the remote) — the command line is e
 `bombshell-client (remote) bash -c 'sleep 1'`, not the multi-KB launch form.
 `tests/probe.py` runs it.
 
+Supplementary local cases **j1–j3** (`tests/json_fidelity_probe.py`, added 2026-10-27
+with the base64-JSON payload, §1.1 / §5.1 step 2): **j1** — byte fidelity under
+surrogateescape: a command argument carrying the lone surrogate a filesystem decode
+installs for an inrepresentable argv byte (PEP 383's `\udc81` for raw `0x81`) must
+reach the remote child **byte-for-byte** — `bash -c 'printf "%s" "$0"'` with the
+surrogate argument must print exactly `a \x81 b` on stream 0 (the str round-trip
+`json` → base64 lane → `Popen`'s fs-encoding is lossless; j1 also rides the five
+`backslashreplace` hardening sites — syslog emulation, `set_proc_name`, `set_cmdline`,
+and the 127/126 confirmation encodings; before the hardening, this same case died
+with rc 1, zero frames, and an orphaned child). **j2** — shape refusal: a payload that is valid JSON but
+not a list of strings is refused with 125 *before anything reaches the channel*
+(the remote exits with 125 and no confirmation; the master, reading channel EOF
+there, reports the same 125). **j3** — mixed versions: a *stale* base64(pickle)
+payload from an un-updated endpoint fails cleanly with 125, nothing executed,
+nothing leaked.
+
 ### 11.2 Qubes matrix
 
 | # | Scenario | Pass criterion |
@@ -1059,6 +1078,11 @@ os\._exit      ──  zero
 select\.select\([^)]*,\s*timeout=    ──  zero (no time-out select)
 Popen\.wait\(\s*timeout               ──  zero
 os\.killpg                             ──  zero (decision 2026-10-22, §9.2)
+import pickle                          ──  zero (2026-10-27: the payload is base64-JSON,
+                                         a str list the remote verifies before
+                                         `Popen`; §1.1, §5.1 step 2)
+json\.loads                           ──  1 (remote payload decode; the master side
+                                         only ever `json.dumps`)
 ```
 And *these must exist exactly:*
 
@@ -1124,10 +1148,10 @@ port it; behavior above is what is mandatory, not the code.
 #!/usr/bin/env python3
 """Drive bombshell-client's remote role over pipes (the qrexec channel).
 Usage: probe.py <case>   (cases: t1..t7, t7b, p10)"""
-import base64, os, pickle, struct, subprocess, sys, time
+import base64, os, json, struct, subprocess, sys, time
 PACKFORMAT, PACKLEN = "!HbIx", 8
 
-def mk(cmd): return base64.b64encode(pickle.dumps(list(cmd))).decode()
+def mk(cmd): return base64.b64encode(json.dumps(list(cmd)).encode("utf-8")).decode()
 
 def frame(n, active, payload=b""):
     return struct.pack(PACKFORMAT, n, int(active), len(payload)) + payload

@@ -22,8 +22,8 @@ mandatory (spec section 11.1); the sleeps below only carve margins and
 may be adjusted freely.
 """
 import base64
+import json
 import os
-import pickle
 import select
 import signal
 import struct
@@ -54,7 +54,7 @@ def case_timeout(signum, frame):
 
 
 def mk(cmd):
-    return base64.b64encode(pickle.dumps(list(cmd))).decode()
+    return base64.b64encode(json.dumps(list(cmd)).encode("utf-8")).decode()
 
 
 def frame(n, active, payload=b""):

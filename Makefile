@@ -13,6 +13,7 @@ clean:
 test:
 	python3 tests/probe.py
 	python3 tests/master_probe.py
+	python3 tests/json_fidelity_probe.py
 
 # Runs the spec section 11.2 Qubes matrix (T8..T15) against a real
 # domain:  make test-qubes VM=<qubes-vm-name>.  The domain must be

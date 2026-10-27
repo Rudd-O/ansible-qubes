@@ -7,8 +7,8 @@ _startt = time.time()
 import base64
 import errno
 import fcntl
+import json
 import os
-import pickle
 import select
 import signal
 import struct
@@ -28,7 +28,10 @@ def set_proc_name(newname):
     from ctypes import cdll, byref, create_string_buffer
 
     if isinstance(newname, str):
-        newname = newname.encode("utf-8")
+        # argv can carry surrogateescape characters (PEP 383: bytes the
+        # interpreter could not decode appear in sys.argv as
+        # \udc80-\udcff); the comm string must stay encodable.
+        newname = newname.encode("utf-8", "backslashreplace")
     libc = cdll.LoadLibrary("libc.so.6")
     buff = create_string_buffer(len(newname) + 1)
     buff.value = newname
@@ -142,7 +145,7 @@ def set_cmdline(title):
         return False
     arg_start, arg_end = span
 
-    new = (title + "\x00").encode("utf-8")
+    new = (title + "\x00").encode("utf-8", "backslashreplace")
     total = arg_end - arg_start
     if len(new) > total:
         logging.debug(
@@ -218,6 +221,10 @@ class LoggingEmu:
             string = a[0]
         else:
             string = a[0] % a[1:]
+        # The syslog C lattice encodes strictly and dies on the
+        # surrogateescape characters argv can legitimately carry
+        # (PEP 383) -- one composition point, composed from here.
+        string = bytes(string, "utf-8", "backslashreplace").decode("utf-8")
         syslog.syslog(
             prio,
             ("%.3f  " % deltat) + self.prefix + ": " + string,
@@ -331,7 +338,7 @@ def main_remote():
 
     # The remote is invoked either self-embedded (python -c: CPython
     # normalizes sys.argv to ['-c', ...], dropping the interpreter, -u
-    # and the source argument) or directly (-s); the base64 pickle
+    # and the source argument) or directly (-s); the base64 JSON
     # payload is ALWAYS the last argument in every launch form, and
     # the base64 alphabet never starts a token with '-'.
     global debug_enabled
@@ -340,9 +347,22 @@ def main_remote():
     cmd_b64 = sys.argv[-1]
 
     try:
-        cmd = pickle.loads(base64.b64decode(cmd_b64))
+        cmd = json.loads(base64.b64decode(cmd_b64))
     except Exception as e:
         logging.error("Cannot decode command from remote side: %s", e)
+        return 125
+    # The carrier must not carry any code-execution primitive: the
+    # pickle this replaced deserialized as arbitrary Python (`loads`
+    # WILL execute on hostile or stale payloads), and no shape check
+    # after it could have fixed that.  The JSON payload is exactly a
+    # list of strings -- verify it, else refuse (a stale
+    # mixed-version payload lands here too, as a clean 125).
+    if not isinstance(cmd, list) or not all(isinstance(a, str) for a in cmd):
+        logging.error(
+            "Command payload is not a plain str list, refusing to execute "
+            "(top-level type %s)",
+            type(cmd).__name__,
+        )
         return 125
     logging.debug("Received command: %s", cmd)
 
@@ -385,12 +405,14 @@ def main_remote():
     except OSError as e:
         msg = "cannot execute %s: %s" % (nicecmd, e)
         logging.error(msg)
-        send_confirmation(sys.stdout, 127, bytes(msg, "utf-8"))
+        send_confirmation(
+            sys.stdout, 127, bytes(msg, "utf-8", "backslashreplace"))
         return 0
     except BaseException as e:
         msg = "cannot execute %s: %s" % (nicecmd, e)
         logging.error(msg)
-        send_confirmation(sys.stdout, 126, bytes(msg, "utf-8"))
+        send_confirmation(
+            sys.stdout, 126, bytes(msg, "utf-8", "backslashreplace"))
         return 0
 
     logging.info("Started %s", nicecmd)
@@ -527,7 +549,14 @@ def main_master():
         "ascii",
     )
     remote_helper_text += b" -d " if debug_enabled else b" "
-    remote_helper_text += base64.b64encode(pickle.dumps(remote_command, 2))
+    # The payload is always a plain str list (sys.argv tail): JSON is
+    # the lossless carrier for it and, unlike the pickle this
+    # replaced, `json.loads` cannot execute a thing (2026-10-27).
+    # ensure_ascii keeps the pre-base64 text pure ASCII; the base64
+    # lane makes it shell-token-safe on the helper one-liner.
+    remote_helper_text += base64.b64encode(
+        json.dumps(remote_command).encode("ascii")
+    )
     remote_helper_text += b"\n"
 
     saved_stderr = openfdforappend(os.dup(sys.stderr.fileno()))

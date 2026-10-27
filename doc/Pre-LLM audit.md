@@ -199,9 +199,15 @@ lands.
   non-glibc system it raises *before logging has started* in either role, and
   the prctl name is silently truncated at 15 bytes without a check
   (pre-rewrite §3.17; lines 24–32, called at 193 and 356).
-* **The trust notes** — the command list crosses the channel as `pickle`
-  (protocol 2, base64), and the client's own source text — self-embedded into the
-  helper one-liner — is the remote's program, with no integrity check on either. Inside the trust model (master and remote
+* **The trust notes** — the command list crossed the channel as `pickle`
+  (protocol 2, base64) — **superseded 2026-10-27: the carriage is now
+  base64-JSON**.  `pickle.loads` *is* arbitrary Python, so the pickle
+  carriage was, in principle, a code-execution primitive for whoever
+  controls the payload, and no shape check could have rescued it after
+  the fact; the remote now verifies the strict list-of-str shape before
+  `Popen` and refuses anything else (a stale pickle payload from a
+  mixed-version endpoint fails cleanly as 125).  The client's own source text — self-embedded into the
+  helper one-liner — is the remote's program, with no integrity check on it. Inside the trust model (master and remote
   one user; qrexec policy authenticates the channel) this is fine; the design
   trades integrity for convenience. Document it if this file ever ships beyond a
   single-user trust domain (pre-rewrite §3.19; spec §1.1 keeps self-embedding as

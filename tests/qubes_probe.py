@@ -18,8 +18,9 @@ Environment notes verified on the reference template (Qubes 7, F41):
     unit-less entries with SyslogIdentifier 'bombshell-client.remote'.
     Journal checks run inside a follow-up session and scope lines
     PER-SESSION: each case anchors on the argv b64 prefix in its
-    remote's 'Started with arguments' line (protocol 2, matching the
-    implementation) -- deterministic under back-to-back runs on the
+    remote's 'Started with arguments' line (the base64-JSON payload,
+    matching the master's construction) -- deterministic under
+    back-to-back runs on the
     same VM, where a time window would pick up the previous run's
     P6 lines (e.g. T10's 'channel closed' would poison T8d).
   * ps -C does not process-select on this template -- process checks
@@ -33,8 +34,8 @@ Environment notes verified on the reference template (Qubes 7, F41):
 """
 import base64
 import hashlib
+import json
 import os
-import pickle
 import re
 import select as sel
 import signal
@@ -256,7 +257,8 @@ def t8_incident():
           and p_ka_rc == 0)
     case("T8e ps-shows-clean-cmdline", ok, "ps=%r" % pso[:80])
 
-    anchor = base64.b64encode(pickle.dumps(["bash"], 2)).decode("ascii")
+    anchor = base64.b64encode(
+        json.dumps(["bash"]).encode("utf-8")).decode("ascii")
     found, scope = journal_scope(anchor)
     exit_line = any("child exited, status 0" in l for l in scope)
     messy = any(k in "\n".join(scope) for k in
@@ -304,7 +306,8 @@ def t10_proxy_kill():
     case("T10 sleep-orphans-in-vm", b"sleep 300" in pso,
          "ps=%r" % pso[:60])
     anchor = base64.b64encode(
-        pickle.dumps(["bash", "-c", "sleep 300"], 2)).decode("ascii")
+        json.dumps(["bash", "-c", "sleep 300"]).encode("utf-8")
+    ).decode("ascii")
     found, scope = journal_scope(anchor)
     p6 = any("channel closed, child still alive" in l for l in scope)
     case("T10 remote-journal-P6", found and p6,
